@@ -1,0 +1,464 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>V2X Roadside Unit</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700;900&family=Rajdhani:wght@500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0b0e11;
+    --panel: #10151d;
+    --line: #232c3a;
+    --text: #e8ecef;
+    --muted: #6b7680;
+    --accent: #2f8fff;
+    --safe: #3b9eff;
+    --danger: #ff3b3b;
+    --amber: #ffb020;
+    --breakdown: #b18cff;
+    --road: #151b24;
+    --shoulder: #0e1319;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font-family: 'Rajdhani', sans-serif; min-height: 100vh; padding: 28px 24px 48px; }
+  header { display: flex; justify-content: space-between; align-items: flex-end; max-width: 1440px; margin: 0 auto 24px; border-bottom: 1px solid var(--line); padding-bottom: 16px; }
+  h1 { font-family: 'Orbitron', sans-serif; font-weight: 900; font-size: 22px; letter-spacing: 2px; margin: 0 0 4px; }
+  header p { margin: 0; color: var(--muted); font-size: 14px; letter-spacing: 0.5px; }
+  .status { display: flex; align-items: center; gap: 8px; font-family: 'Orbitron', sans-serif; font-size: 12px; letter-spacing: 1.5px; }
+  .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--muted); }
+  .dot.live { background: var(--safe); box-shadow: 0 0 8px var(--safe); animation: pulse 1.6s infinite; }
+  .dot.down { background: var(--danger); box-shadow: 0 0 8px var(--danger); }
+  @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
+  @keyframes hazard { 0%,100% { opacity: 1; } 50% { opacity: 0.5; } }
+
+  .layout { max-width: 1440px; margin: 0 auto; display: grid; grid-template-columns: 1fr 380px; gap: 20px; align-items: start; }
+  @media (max-width: 900px) { .layout { grid-template-columns: 1fr; } }
+
+  .road-panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 20px 20px 14px; }
+  .road-label { font-family: 'Orbitron', sans-serif; font-size: 11px; letter-spacing: 2px; color: var(--muted); margin-bottom: 12px; }
+  .road-stage { position: relative; width: 100%; aspect-ratio: 8 / 5; overflow: hidden; border-radius: 6px; }
+  .road-stage svg { position: absolute; inset: 0; width: 100%; height: 100%; }
+
+  .lane-dash { stroke-dasharray: 14 14; animation: dash-scroll 0.5s linear infinite; }
+  @keyframes dash-scroll { to { stroke-dashoffset: -28px; } }
+
+  .vehicle {
+    position: absolute;
+    transform: translate(-50%, -50%);
+    transition: left 0.4s linear, top 0.4s linear, opacity 0.6s ease;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    pointer-events: auto;
+    cursor: pointer;
+  }
+  .vehicle .car-icon { transition: transform 0.3s, filter 0.3s; filter: drop-shadow(0 0 6px rgba(59,158,255,0.55)); }
+  .vehicle.emergency .car-icon { filter: drop-shadow(0 0 10px rgba(255,59,59,0.9)); animation: pulse 0.6s infinite; }
+  .vehicle.breakdown .car-icon { filter: drop-shadow(0 0 10px rgba(177,140,255,0.9)); animation: hazard 0.8s infinite; }
+  .car-body { fill: var(--safe); stroke: #060809; stroke-width: 1; }
+  .vehicle.emergency .car-body { fill: var(--danger); }
+  .vehicle.breakdown .car-body { fill: var(--breakdown); }
+  .car-glass { fill: #060809; opacity: 0.4; }
+  .car-light { fill: #ffb3b3; opacity: 0.85; }
+  .vehicle .tag { font-family: 'Orbitron', sans-serif; font-size: 10px; color: var(--muted); white-space: nowrap; margin-bottom: 3px; }
+
+  #tooltip {
+    position: absolute;
+    display: none;
+    background: #0a0d11;
+    border: 1px solid var(--breakdown);
+    border-radius: 8px;
+    padding: 10px 14px;
+    font-size: 12px;
+    max-width: 220px;
+    z-index: 999;
+    pointer-events: none;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+  }
+  #tooltip b { font-family: 'Orbitron', sans-serif; font-size: 11px; display: block; margin-bottom: 4px; }
+  #tooltip .tt-reason { color: var(--muted); }
+
+  .side-panel { display: flex; flex-direction: column; gap: 16px; }
+  .monitor-label { font-family: 'Orbitron', sans-serif; font-size: 11px; letter-spacing: 2px; color: var(--muted); margin: 4px 0 -4px; }
+
+  .notif-panel { display: flex; flex-direction: column; gap: 6px; max-height: 240px; overflow-y: auto; }
+  .notif { border-radius: 8px; padding: 8px 12px; font-size: 12px; border: 1px solid; }
+  .notif-medium { background: rgba(255,176,32,0.08); border-color: rgba(255,176,32,0.3); color: var(--amber); }
+  .notif-high { background: rgba(255,176,32,0.14); border-color: rgba(255,176,32,0.45); color: var(--amber); }
+  .notif-critical { background: rgba(255,59,59,0.12); border-color: rgba(255,59,59,0.45); color: var(--danger); }
+  .notif-info { background: rgba(59,158,255,0.1); border-color: rgba(59,158,255,0.35); color: var(--safe); }
+  .notif-time { color: var(--muted); font-size: 10px; margin-left: 6px; }
+
+  .alerts-panel { display: flex; flex-direction: column; gap: 8px; }
+  .alert { background: rgba(255,59,59,0.1); border: 1px solid rgba(255,59,59,0.35); border-radius: 8px; padding: 10px 14px; font-size: 13px; display: flex; justify-content: space-between; align-items: center; }
+  .alert b { font-family: 'Orbitron', sans-serif; font-size: 11px; color: var(--danger); }
+  .alert span { color: var(--muted); }
+
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 16px 18px; transition: opacity 0.3s, border-color 0.3s; }
+  .card.has-alert { border-color: rgba(255,59,59,0.5); }
+  .card.breakdown-card { border-color: rgba(177,140,255,0.5); }
+  .card.stale { opacity: 0.4; }
+  .card-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+  .card-id { font-family: 'Orbitron', sans-serif; font-size: 14px; font-weight: 700; letter-spacing: 1px; }
+  .badge { font-family: 'Orbitron', sans-serif; font-size: 9px; letter-spacing: 1px; padding: 3px 8px; border-radius: 4px; background: rgba(59,158,255,0.15); color: var(--safe); }
+  .badge.warn { background: rgba(255,59,59,0.15); color: var(--danger); }
+  .badge.breakdown-badge { background: rgba(177,140,255,0.18); color: var(--breakdown); }
+  .badge.stale-badge { background: rgba(107,118,128,0.2); color: var(--muted); }
+  .readout { display: flex; justify-content: space-between; font-size: 13px; margin-bottom: 5px; color: var(--muted); }
+  .readout b { color: var(--text); font-weight: 600; }
+  .health-healthy { color: var(--safe) !important; }
+  .health-monitor { color: var(--amber) !important; }
+  .health-service_soon { color: var(--danger) !important; }
+
+  .wear-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--line); }
+  .wear-item { display: flex; flex-direction: column; gap: 4px; }
+  .wear-label { font-size: 10px; color: var(--muted); letter-spacing: 0.5px; }
+  .wear-bar-track { height: 5px; background: #1a2028; border-radius: 3px; overflow: hidden; }
+  .wear-bar-fill { height: 100%; border-radius: 3px; transition: width 0.4s ease, background 0.4s ease; }
+  .wear-pct { font-size: 10px; color: var(--text); font-weight: 600; }
+
+  .controls { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--line); display: flex; flex-direction: column; gap: 6px; }
+  .control-row { display: flex; gap: 6px; }
+  .control-row input { flex: 1; min-width: 0; background: #0f1317; border: 1px solid var(--line); border-radius: 5px; color: var(--text); font-family: 'Rajdhani', sans-serif; font-size: 13px; padding: 6px 8px; }
+  .control-row input:focus { outline: 1px solid var(--accent); }
+  .control-row button { font-family: 'Orbitron', sans-serif; font-size: 10px; letter-spacing: 1px; background: var(--line); color: var(--text); border: none; border-radius: 5px; padding: 0 12px; cursor: pointer; }
+  .control-row button:hover { background: var(--accent); color: #0b0e11; }
+  .breakdown-btn { width: 100%; font-family: 'Orbitron', sans-serif; font-size: 10px; letter-spacing: 1px; background: rgba(177,140,255,0.15); color: var(--breakdown); border: 1px solid rgba(177,140,255,0.4); border-radius: 5px; padding: 7px 0; cursor: pointer; margin-top: 4px; }
+  .breakdown-btn:hover { background: var(--breakdown); color: #0b0e11; }
+
+  .empty { grid-column: 1 / -1; text-align: center; color: var(--muted); padding: 60px 0; font-size: 14px; }
+</style>
+</head>
+<body>
+
+<header>
+  <div>
+    <h1>V2X ROADSIDE UNIT</h1>
+    <p>Live vehicle telemetry &mdash; aggregated over UDP, pushed via WebSocket</p>
+  </div>
+  <div class="status">
+    <div class="dot" id="statusDot"></div>
+    <span id="statusText">CONNECTING</span>
+  </div>
+</header>
+
+<div class="layout" id="layout">
+  <div class="road-panel">
+    <div class="road-label">LIVE HIGHWAY VIEW</div>
+    <div class="road-stage" id="roadStage">
+      <svg id="roadSvg" viewBox="0 0 700 440" preserveAspectRatio="none"></svg>
+      <div id="tooltip"></div>
+    </div>
+  </div>
+
+  <div class="side-panel">
+    <div class="monitor-label" id="notifLabel" style="display:none;">NOTIFICATIONS</div>
+    <div id="notifPanel" class="notif-panel"></div>
+    <div id="alertsPanel" class="alerts-panel"></div>
+    <div class="monitor-label">VEHICLE MONITOR</div>
+    <div id="grid" style="display:flex; flex-direction:column; gap:12px;"></div>
+  </div>
+</div>
+<div class="empty" id="empty">Waiting for vehicle broadcasts&hellip;</div>
+
+<script>
+  // ---- Perspective road geometry (logical 700x440 space) ----
+  const W = 700, H = 440;
+  const horizonY = 70, bottomY = 440;
+  const bottomHalfWidth = 300, topHalfWidth = 55;
+  const centerX = 320;
+  const numLanes = 3;
+
+  function yAt(d) { return bottomY - d * (bottomY - horizonY); }
+  function leftXAt(d) { return centerX - (bottomHalfWidth - d * (bottomHalfWidth - topHalfWidth)); }
+  function rightXAt(d) { return centerX + (bottomHalfWidth - d * (bottomHalfWidth - topHalfWidth)); }
+  function laneXAt(d, lane) {
+    if (lane === 3) {
+      const roadWidth = rightXAt(d) - leftXAt(d);
+      return rightXAt(d) + roadWidth * 0.2;
+    }
+    const left = leftXAt(d), right = rightXAt(d);
+    return left + (lane + 0.5) / numLanes * (right - left);
+  }
+  function scaleAt(d) { return 1 - d * 0.5; }
+
+  function drawRoad() {
+    const svg = document.getElementById('roadSvg');
+    let svgContent = `<polygon points="${leftXAt(0)},${yAt(0)} ${rightXAt(0)},${yAt(0)} ${rightXAt(1)},${yAt(1)} ${leftXAt(1)},${yAt(1)}" fill="var(--road)" stroke="var(--line)" stroke-width="1.5"/>`;
+
+    // Shoulder strip, to the right of the main road
+    const shoulderOuter0 = rightXAt(0) + (rightXAt(0) - leftXAt(0)) * 0.42;
+    const shoulderOuter1 = rightXAt(1) + (rightXAt(1) - leftXAt(1)) * 0.42;
+    svgContent += `<polygon points="${rightXAt(0)},${yAt(0)} ${shoulderOuter0},${yAt(0)} ${shoulderOuter1},${yAt(1)} ${rightXAt(1)},${yAt(1)}" fill="var(--shoulder)" stroke="var(--line)" stroke-width="1" stroke-dasharray="5 5" opacity="0.7"/>`;
+
+    for (const frac of [1/3, 2/3]) {
+      let d1x = leftXAt(0) + frac * (rightXAt(0) - leftXAt(0));
+      let d2x = leftXAt(1) + frac * (rightXAt(1) - leftXAt(1));
+      svgContent += `<line class="lane-dash" x1="${d1x}" y1="${yAt(0)}" x2="${d2x}" y2="${yAt(1)}" stroke="var(--muted)" stroke-width="2" opacity="0.5"/>`;
+    }
+
+    svg.innerHTML = svgContent;
+  }
+  drawRoad();
+
+  // ---- Live state ----
+  const vehicles = {};
+  let alerts = [];
+  let maintenance = {};
+  const previousWear = {};
+  const notifications = [];
+  const seenVehicleIds = new Set();
+  const WEAR_COMPONENTS = [
+    { key: 'engineWearPct', label: 'ENGINE' },
+    { key: 'brakeWearPct', label: 'BRAKES' },
+    { key: 'tyreWearPct', label: 'TYRES' },
+    { key: 'radiatorWearPct', label: 'RADIATOR' },
+    { key: 'acWearPct', label: 'AC' },
+    { key: 'timingBeltWearPct', label: 'BELT' }
+  ];
+  const REASON_TEXT = {
+    ENGINE_FAILURE: 'Engine wear critical \u2014 pulling over',
+    BRAKE_FAILURE: 'Brake wear critical \u2014 pulling over',
+    TYRE_FAILURE: 'Tyre wear critical \u2014 pulling over',
+    MANUAL_TEST: 'Manual breakdown simulation'
+  };
+
+  const roadStageEl = document.getElementById('roadStage');
+  const gridEl = document.getElementById('grid');
+  const emptyEl = document.getElementById('empty');
+  const layoutEl = document.getElementById('layout');
+  const alertsPanelEl = document.getElementById('alertsPanel');
+  const tooltipEl = document.getElementById('tooltip');
+  const statusDot = document.getElementById('statusDot');
+  const statusText = document.getElementById('statusText');
+  const STALE_MS = 3000;
+  const VIEW_HALF_RANGE = 70;
+  let socket = null;
+
+  function wearColor(pct) {
+    if (pct >= 75) return 'var(--danger)';
+    if (pct >= 50) return 'var(--amber)';
+    return 'var(--safe)';
+  }
+
+  function addNotification(vehicleId, message, severity) {
+    notifications.unshift({ vehicleId, message, severity, time: new Date().toLocaleTimeString() });
+    if (notifications.length > 12) notifications.pop();
+  }
+
+  function checkWearNotifications(v) {
+    if (!previousWear[v.id]) previousWear[v.id] = {};
+    WEAR_COMPONENTS.forEach(c => {
+      const prev = previousWear[v.id][c.key] ?? 0;
+      const curr = v[c.key] ?? 0;
+      [50, 75, 90].forEach(threshold => {
+        if (prev < threshold && curr >= threshold) {
+          const severity = threshold >= 90 ? 'critical' : (threshold >= 75 ? 'high' : 'medium');
+          const message = threshold >= 90
+            ? c.label + ' critically worn \u2014 visit a service center now'
+            : c.label + ' at ' + threshold + '% wear \u2014 plan replacement soon';
+          addNotification(v.id, message, severity);
+        }
+      });
+      previousWear[v.id][c.key] = curr;
+    });
+  }
+
+  function renderNotifications() {
+    const label = document.getElementById('notifLabel');
+    const panel = document.getElementById('notifPanel');
+    label.style.display = notifications.length ? 'block' : 'none';
+    panel.innerHTML = notifications.map(n =>
+      '<div class="notif notif-' + n.severity + '"><b>' + n.vehicleId + '</b> \u2014 ' + n.message
+      + '<span class="notif-time">' + n.time + '</span></div>'
+    ).join('');
+  }
+
+  function sendCommand(vehicleId, field, value) {
+    if (socket && socket.readyState === WebSocket.OPEN) {
+      socket.send(JSON.stringify({ vehicleId, field, value }));
+    }
+  }
+
+  function connect() {
+    const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+    socket = new WebSocket(proto + '://' + location.host + '/ws/vehicles');
+
+    socket.onopen = () => { statusDot.className = 'dot live'; statusText.textContent = 'LIVE'; };
+    socket.onclose = () => { statusDot.className = 'dot down'; statusText.textContent = 'DISCONNECTED'; setTimeout(connect, 2000); };
+    socket.onerror = () => socket.close();
+    socket.onmessage = (event) => {
+      const payload = JSON.parse(event.data);
+      (payload.vehicles || []).forEach(v => {
+        if (!seenVehicleIds.has(v.id)) {
+          seenVehicleIds.add(v.id);
+          addNotification(v.id, 'joined the network', 'info');
+        }
+        vehicles[v.id] = v;
+        checkWearNotifications(v);
+      });
+      alerts = payload.alerts || [];
+      maintenance = payload.maintenance || {};
+      renderNotifications();
+      render();
+    };
+  }
+
+  function showTooltip(el, v) {
+    const reasonText = REASON_TEXT[v.reason] || v.status;
+    tooltipEl.innerHTML = '<b>' + v.id + '</b>'
+      + '<div class="tt-reason">' + reasonText + '</div>'
+      + '<div style="margin-top:6px;">Speed: ' + v.speedMps.toFixed(1) + ' m/s</div>';
+    tooltipEl.style.display = 'block';
+    const stageRect = roadStageEl.getBoundingClientRect();
+    const elRect = el.getBoundingClientRect();
+    tooltipEl.style.left = (elRect.left - stageRect.left + 20) + 'px';
+    tooltipEl.style.top = (elRect.top - stageRect.top - 10) + 'px';
+  }
+
+  function hideTooltip() { tooltipEl.style.display = 'none'; }
+
+  function render() {
+    const ids = Object.keys(vehicles);
+    layoutEl.style.display = ids.length ? 'grid' : 'none';
+    emptyEl.style.display = ids.length ? 'none' : 'block';
+    if (!ids.length) return;
+
+    // Chase camera: recenter on the average position of vehicles still in normal
+    // traffic lanes (not parked on the shoulder), so a stopped vehicle doesn't drag
+    // the view backward while everyone else keeps moving forward.
+    const activeXs = ids.map(id => vehicles[id]).filter(v => v.lane !== 3).map(v => v.x);
+    const referenceXs = activeXs.length ? activeXs : ids.map(id => vehicles[id].x);
+    const cameraX = referenceXs.reduce((a, b) => a + b, 0) / referenceXs.length;
+    const viewMin = cameraX - VIEW_HALF_RANGE;
+    const viewMax = cameraX + VIEW_HALF_RANGE;
+    const range = viewMax - viewMin;
+
+    const idsWithAlert = new Set();
+    alerts.forEach(a => { idsWithAlert.add(a.from); idsWithAlert.add(a.to); });
+
+    ids.forEach(id => {
+      const v = vehicles[id];
+      const dRaw = (v.x - viewMin) / range;
+
+      let el = document.getElementById('marker-' + id);
+      const isNew = !el;
+      if (isNew) {
+        el = document.createElement('div');
+        el.id = 'marker-' + id;
+        el.className = 'vehicle';
+        el.style.opacity = '0';
+        el.innerHTML = '<span class="tag">' + id + '</span>'
+          + '<svg class="car-icon" width="22" height="38" viewBox="0 0 16 30">'
+          + '<rect class="car-body" x="2" y="2" width="12" height="26" rx="5"/>'
+          + '<rect class="car-glass" x="4" y="9" width="8" height="9" rx="3"/>'
+          + '<circle class="car-light" cx="4.5" cy="26.5" r="1.1"/>'
+          + '<circle class="car-light" cx="11.5" cy="26.5" r="1.1"/>'
+          + '</svg>';
+        el.addEventListener('mouseenter', () => {
+          const current = vehicles[id];
+          if (current && current.status !== 'NORMAL') showTooltip(el, current);
+        });
+        el.addEventListener('mouseleave', hideTooltip);
+        roadStageEl.appendChild(el);
+        requestAnimationFrame(() => { el.style.opacity = '1'; });
+      }
+
+      if (dRaw < -0.12 || dRaw > 1.12) {
+        el.style.display = 'none';
+        return;
+      }
+      el.style.display = 'flex';
+
+      const d = Math.min(1, Math.max(0, dRaw));
+      const px = laneXAt(d, v.lane);
+      const py = yAt(d);
+      const scale = scaleAt(d);
+
+      el.style.left = (px / W * 100) + '%';
+      el.style.top = (py / H * 100) + '%';
+      el.style.zIndex = Math.round((1 - d) * 100);
+      el.querySelector('.car-icon').style.transform = 'scale(' + scale.toFixed(2) + ')';
+
+      let cls = 'vehicle';
+      if (v.status === 'BREAKDOWN') cls += ' breakdown';
+      else if (v.emergency || idsWithAlert.has(id)) cls += ' emergency';
+      el.className = cls;
+    });
+
+    alertsPanelEl.innerHTML = alerts.length === 0 ? '' : alerts.map(a =>
+      '<div class="alert"><b>COLLISION RISK</b><span>' + a.from + ' &rarr; ' + a.to
+      + ' &middot; TTC ' + a.ttc.toFixed(1) + 's &middot; gap ' + a.gap.toFixed(0) + 'm</span></div>'
+    ).join('');
+
+    if (gridEl.contains(document.activeElement)) return;
+
+    const sortedByX = [...ids].sort((a, b) => vehicles[a].x - vehicles[b].x);
+    gridEl.innerHTML = sortedByX.map(id => {
+      const v = vehicles[id];
+      const ageMs = Date.now() - v.timestampMillis;
+      const stale = ageMs > STALE_MS;
+      const hasAlert = idsWithAlert.has(id);
+      const isBreakdown = v.status === 'BREAKDOWN';
+      const badgeClass = stale ? 'badge stale-badge' : (isBreakdown ? 'badge breakdown-badge' : (v.emergency || hasAlert ? 'badge warn' : 'badge'));
+      const badgeText = stale ? 'STALE' : (isBreakdown ? 'PULLED OVER' : (v.emergency ? 'BRAKING' : (hasAlert ? 'RISK' : 'NORMAL')));
+      const laneName = v.lane === 3 ? 'SHOULDER' : (['LEFT', 'MIDDLE', 'RIGHT'][v.lane] || ('LANE ' + v.lane));
+      const health = maintenance[id];
+      const healthRow = health
+        ? '<div class="readout"><span>Engine Health</span><b class="health-' + health.healthStatus.toLowerCase() + '">'
+          + health.healthStatus.replace('_', ' ') + ' (RUL ' + Math.round(health.predictedRul) + ')</b></div>'
+        : '';
+
+      const wearGrid = '<div class="wear-grid">' + WEAR_COMPONENTS.map(c => {
+        const pct = v[c.key] ?? 0;
+        const color = wearColor(pct);
+        return '<div class="wear-item">'
+          + '<span class="wear-label">' + c.label + '</span>'
+          + '<div class="wear-bar-track"><div class="wear-bar-fill" style="width:' + pct.toFixed(0) + '%; background:' + color + ';"></div></div>'
+          + '<span class="wear-pct">' + pct.toFixed(0) + '%</span>'
+          + '</div>';
+      }).join('') + '</div>';
+
+      return '<div class="card' + (stale ? ' stale' : '') + (hasAlert ? ' has-alert' : '') + (isBreakdown ? ' breakdown-card' : '') + '">'
+        + '<div class="card-top"><span class="card-id">' + id + '</span>'
+        + '<span class="' + badgeClass + '">' + badgeText + '</span></div>'
+        + '<div class="readout"><span>Lane</span><b>' + laneName + '</b></div>'
+        + '<div class="readout"><span>Position</span><b>' + v.x.toFixed(1) + ' m</b></div>'
+        + '<div class="readout"><span>Speed</span><b>' + v.speedMps.toFixed(1) + ' m/s</b></div>'
+        + '<div class="readout"><span>Last update</span><b>' + (ageMs / 1000).toFixed(1) + 's ago</b></div>'
+        + healthRow
+        + wearGrid
+        + '<div class="controls">'
+        + '<div class="control-row"><input type="number" id="speed-' + id + '" placeholder="Speed m/s" step="1">'
+        + '<button onclick="applySpeed(\'' + id + '\')">SET</button></div>'
+        + '<div class="control-row"><input type="number" id="pos-' + id + '" placeholder="Position m" step="1">'
+        + '<button onclick="applyPosition(\'' + id + '\')">SET</button></div>'
+        + '<button class="breakdown-btn" onclick="simulateBreakdown(\'' + id + '\')">SIMULATE BREAKDOWN</button>'
+        + '</div></div>';
+    }).join('');
+  }
+
+  function applySpeed(id) {
+    const input = document.getElementById('speed-' + id);
+    const value = parseFloat(input.value);
+    if (!isNaN(value)) { sendCommand(id, 'SPEED', value); input.value = ''; }
+  }
+
+  function applyPosition(id) {
+    const input = document.getElementById('pos-' + id);
+    const value = parseFloat(input.value);
+    if (!isNaN(value)) { sendCommand(id, 'POSITION', value); input.value = ''; }
+  }
+
+  function simulateBreakdown(id) {
+    sendCommand(id, 'BREAKDOWN', 1);
+  }
+
+  setInterval(render, 500);
+  connect();
+</script>
+
+</body>
+</html>
