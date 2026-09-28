@@ -3,462 +3,1077 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>V2X Roadside Unit</title>
+<title>V2X RSU — Live Traffic Command</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700;900&family=Rajdhani:wght@500;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;600;700;900&family=Rajdhani:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
-  :root {
-    --bg: #0b0e11;
-    --panel: #10151d;
-    --line: #232c3a;
-    --text: #e8ecef;
-    --muted: #6b7680;
-    --accent: #2f8fff;
-    --safe: #3b9eff;
-    --danger: #ff3b3b;
-    --amber: #ffb020;
-    --breakdown: #b18cff;
-    --road: #151b24;
-    --shoulder: #0e1319;
-  }
-  * { box-sizing: border-box; }
-  body { margin: 0; background: var(--bg); color: var(--text); font-family: 'Rajdhani', sans-serif; min-height: 100vh; padding: 28px 24px 48px; }
-  header { display: flex; justify-content: space-between; align-items: flex-end; max-width: 1440px; margin: 0 auto 24px; border-bottom: 1px solid var(--line); padding-bottom: 16px; }
-  h1 { font-family: 'Orbitron', sans-serif; font-weight: 900; font-size: 22px; letter-spacing: 2px; margin: 0 0 4px; }
-  header p { margin: 0; color: var(--muted); font-size: 14px; letter-spacing: 0.5px; }
-  .status { display: flex; align-items: center; gap: 8px; font-family: 'Orbitron', sans-serif; font-size: 12px; letter-spacing: 1.5px; }
-  .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--muted); }
-  .dot.live { background: var(--safe); box-shadow: 0 0 8px var(--safe); animation: pulse 1.6s infinite; }
-  .dot.down { background: var(--danger); box-shadow: 0 0 8px var(--danger); }
-  @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
-  @keyframes hazard { 0%,100% { opacity: 1; } 50% { opacity: 0.5; } }
+:root {
+  --bg:#04070b; --road:#0a0f15; --road2:#0c1219;
+  --panel:rgba(8,14,22,.88); --panel-b:rgba(0,180,255,.12);
+  --line:rgba(0,180,255,.18); --line2:rgba(0,180,255,.35);
+  --text:#e8f4ff; --muted:#4a6a8a;
+  --accent:#00d4ff; --accent2:#0090cc;
+  --safe:#00ffb3; --danger:#ff3a3a; --amber:#ffb300; --purple:#b06cff;
+  --sedan:#2563eb; --suv:#059669; --truck:#d97706; --amb:#dc2626;
+}
+*{box-sizing:border-box;margin:0;padding:0;}
+html,body{width:100%;height:100%;overflow:hidden;background:var(--bg);}
+body{font-family:'Rajdhani',sans-serif;color:var(--text);display:flex;flex-direction:column;}
 
-  .layout { max-width: 1440px; margin: 0 auto; display: grid; grid-template-columns: 1fr 380px; gap: 20px; align-items: start; }
-  @media (max-width: 900px) { .layout { grid-template-columns: 1fr; } }
+/* ── KEYFRAMES ─────────────────────────────────────────────────────── */
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
+@keyframes siren{0%,49%{filter:drop-shadow(0 0 8px #f87171) brightness(1.3)}50%,100%{filter:drop-shadow(0 0 8px #60a5fa) brightness(1.3)}}
+@keyframes breakd{0%,100%{filter:drop-shadow(0 0 10px #b06cff)}50%{filter:drop-shadow(0 0 3px #b06cff)}}
+@keyframes emerge{0%,100%{filter:drop-shadow(0 0 10px #ff3a3a)}50%{filter:drop-shadow(0 0 3px #ff3a3a)}}
+@keyframes blink{0%,49%{opacity:1}50%,100%{opacity:0}}
+@keyframes v2x{from{transform:translate(-50%,-50%) scale(.2);opacity:.9}to{transform:translate(-50%,-50%) scale(3.5);opacity:0}}
+@keyframes modal-in{from{opacity:0;transform:scale(.94) translateY(10px)}to{opacity:1;transform:none}}
+@keyframes fadein{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+@keyframes roadscrll{from{stroke-dashoffset:0}to{stroke-dashoffset:60}}
+@keyframes speedline{from{opacity:.7;transform:scaleX(0)}to{opacity:0;transform:scaleX(1)}}
+@keyframes hud-glow{0%,100%{box-shadow:0 0 0 1px rgba(0,212,255,.15)}50%{box-shadow:0 0 0 1px rgba(0,212,255,.45),0 0 20px rgba(0,212,255,.1)}}
 
-  .road-panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 20px 20px 14px; }
-  .road-label { font-family: 'Orbitron', sans-serif; font-size: 11px; letter-spacing: 2px; color: var(--muted); margin-bottom: 12px; }
-  .road-stage { position: relative; width: 100%; aspect-ratio: 8 / 5; overflow: hidden; border-radius: 6px; }
-  .road-stage svg { position: absolute; inset: 0; width: 100%; height: 100%; }
+/* ── HUD HEADER ─────────────────────────────────────────────────────── */
+.hud-header{
+  display:flex;align-items:center;gap:16px;
+  padding:8px 20px;
+  background:linear-gradient(180deg,rgba(0,10,20,.95) 0%,rgba(0,10,20,.7) 100%);
+  border-bottom:1px solid var(--line);
+  flex-shrink:0;z-index:50;
+  backdrop-filter:blur(12px);
+}
+.logo{font-family:'Orbitron',sans-serif;font-weight:900;font-size:15px;letter-spacing:4px;
+  background:linear-gradient(90deg,var(--accent),var(--safe));
+  -webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;}
+.logo-sub{font-size:9px;color:var(--muted);letter-spacing:2px;font-family:'Orbitron',sans-serif;}
+.hdr-metrics{display:flex;gap:1px;margin-left:auto;}
+.hm{
+  display:flex;flex-direction:column;align-items:center;
+  padding:4px 14px;border-right:1px solid var(--line);min-width:72px;
+}
+.hm:last-child{border-right:none;}
+.hm-lbl{font-family:'Orbitron',sans-serif;font-size:7px;letter-spacing:2px;color:var(--muted);}
+.hm-val{font-family:'Orbitron',sans-serif;font-size:18px;font-weight:700;line-height:1;color:var(--accent);}
+.hm-val.safe{color:var(--safe);} .hm-val.danger{color:var(--danger);} .hm-val.amber{color:var(--amber);}
+.hm-sub{font-size:9px;color:var(--muted);}
+.ws-pill{display:flex;align-items:center;gap:6px;padding:5px 12px;border-radius:20px;border:1px solid var(--line);background:rgba(0,0,0,.4);font-family:'Orbitron',sans-serif;font-size:9px;letter-spacing:1.5px;}
+.dot{width:7px;height:7px;border-radius:50%;background:var(--muted);}
+.dot.live{background:var(--safe);box-shadow:0 0 8px var(--safe);animation:pulse 1.6s infinite;}
+.dot.down{background:var(--danger);}
 
-  .lane-dash { stroke-dasharray: 14 14; animation: dash-scroll 0.5s linear infinite; }
-  @keyframes dash-scroll { to { stroke-dashoffset: -28px; } }
+/* ── HUD TOOLBAR ────────────────────────────────────────────────────── */
+.hud-toolbar{
+  display:flex;align-items:center;gap:6px;padding:6px 16px;
+  background:rgba(0,8,18,.7);border-bottom:1px solid var(--line);
+  flex-shrink:0;flex-wrap:wrap;
+}
+.tb-sep{width:1px;height:20px;background:var(--line);margin:0 4px;}
+.tb-lbl{font-family:'Orbitron',sans-serif;font-size:7px;letter-spacing:2px;color:var(--muted);}
+.hbtn{
+  font-family:'Orbitron',sans-serif;font-size:8px;letter-spacing:1px;
+  padding:5px 11px;border-radius:5px;border:1px solid var(--line2);
+  background:rgba(0,212,255,.06);color:var(--text);cursor:pointer;
+  transition:all .2s;white-space:nowrap;
+}
+.hbtn:hover{background:rgba(0,212,255,.18);border-color:var(--accent);box-shadow:0 0 12px rgba(0,212,255,.2);}
+.hbtn.active{background:rgba(0,212,255,.2);border-color:var(--accent);}
+.hbtn.red{border-color:rgba(255,58,58,.3);}
+.hbtn.red:hover{background:rgba(255,58,58,.15);border-color:var(--danger);}
+.hbtn.scenarios{
+  background:linear-gradient(90deg,rgba(0,212,255,.12),rgba(0,255,179,.08));
+  border-color:rgba(0,212,255,.5);color:var(--accent);font-size:9px;
+  animation:hud-glow 3s infinite;
+}
+.hbtn.scenarios:hover{background:linear-gradient(90deg,rgba(0,212,255,.25),rgba(0,255,179,.15));}
+.dbtn{
+  font-family:'Orbitron',sans-serif;font-size:7px;letter-spacing:1px;
+  padding:4px 9px;border-radius:4px;border:1px solid var(--line);
+  background:transparent;color:var(--muted);cursor:pointer;transition:all .18s;
+}
+.dbtn.active,.dbtn:hover{background:rgba(0,212,255,.1);border-color:var(--accent);color:var(--accent);}
 
-  .vehicle {
-    position: absolute;
-    transform: translate(-50%, -50%);
-    transition: left 0.4s linear, top 0.4s linear, opacity 0.6s ease;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    pointer-events: auto;
-    cursor: pointer;
-  }
-  .vehicle .car-icon { transition: transform 0.3s, filter 0.3s; filter: drop-shadow(0 0 6px rgba(59,158,255,0.55)); }
-  .vehicle.emergency .car-icon { filter: drop-shadow(0 0 10px rgba(255,59,59,0.9)); animation: pulse 0.6s infinite; }
-  .vehicle.breakdown .car-icon { filter: drop-shadow(0 0 10px rgba(177,140,255,0.9)); animation: hazard 0.8s infinite; }
-  .car-body { fill: var(--safe); stroke: #060809; stroke-width: 1; }
-  .vehicle.emergency .car-body { fill: var(--danger); }
-  .vehicle.breakdown .car-body { fill: var(--breakdown); }
-  .car-glass { fill: #060809; opacity: 0.4; }
-  .car-light { fill: #ffb3b3; opacity: 0.85; }
-  .vehicle .tag { font-family: 'Orbitron', sans-serif; font-size: 10px; color: var(--muted); white-space: nowrap; margin-bottom: 3px; }
+/* ── MAIN SCENE AREA ─────────────────────────────────────────────────── */
+.scene{flex:1;display:grid;grid-template-columns:1fr 320px;overflow:hidden;position:relative;}
+@media(max-width:850px){.scene{grid-template-columns:1fr;}}
 
-  #tooltip {
-    position: absolute;
-    display: none;
-    background: #0a0d11;
-    border: 1px solid var(--breakdown);
-    border-radius: 8px;
-    padding: 10px 14px;
-    font-size: 12px;
-    max-width: 220px;
-    z-index: 999;
-    pointer-events: none;
-    box-shadow: 0 4px 20px rgba(0,0,0,0.5);
-  }
-  #tooltip b { font-family: 'Orbitron', sans-serif; font-size: 11px; display: block; margin-bottom: 4px; }
-  #tooltip .tt-reason { color: var(--muted); }
+/* ── HIGHWAY CANVAS ──────────────────────────────────────────────────── */
+.highway{position:relative;overflow:hidden;background:var(--bg);}
+.highway-svg{position:absolute;inset:0;width:100%;height:100%;}
+#roadCanvas{position:absolute;inset:0;width:100%;height:100%;}
 
-  .side-panel { display: flex; flex-direction: column; gap: 16px; }
-  .monitor-label { font-family: 'Orbitron', sans-serif; font-size: 11px; letter-spacing: 2px; color: var(--muted); margin: 4px 0 -4px; }
+/* cam info overlay */
+.cam-overlay{
+  position:absolute;bottom:10px;left:50%;transform:translateX(-50%);
+  font-family:'Orbitron',sans-serif;font-size:9px;letter-spacing:2px;color:var(--muted);
+  background:rgba(0,0,0,.5);padding:4px 12px;border-radius:10px;border:1px solid var(--line);
+  pointer-events:none;
+}
 
-  .notif-panel { display: flex; flex-direction: column; gap: 6px; max-height: 240px; overflow-y: auto; }
-  .notif { border-radius: 8px; padding: 8px 12px; font-size: 12px; border: 1px solid; }
-  .notif-medium { background: rgba(255,176,32,0.08); border-color: rgba(255,176,32,0.3); color: var(--amber); }
-  .notif-high { background: rgba(255,176,32,0.14); border-color: rgba(255,176,32,0.45); color: var(--amber); }
-  .notif-critical { background: rgba(255,59,59,0.12); border-color: rgba(255,59,59,0.45); color: var(--danger); }
-  .notif-info { background: rgba(59,158,255,0.1); border-color: rgba(59,158,255,0.35); color: var(--safe); }
-  .notif-time { color: var(--muted); font-size: 10px; margin-left: 6px; }
+/* ── VEHICLE MARKERS ─────────────────────────────────────────────────── */
+.vehicle{
+  position:absolute;transform:translate(-50%,-50%);
+  display:flex;flex-direction:column;align-items:center;
+  pointer-events:auto;cursor:pointer;
+  transition:opacity .6s;
+}
+.vehicle .vtag{
+  font-family:'Orbitron',sans-serif;font-size:7px;color:rgba(0,212,255,.6);
+  white-space:nowrap;margin-bottom:1px;letter-spacing:.5px;
+  text-shadow:0 0 6px rgba(0,212,255,.5);
+}
+.car-wrap{position:relative;}
+.car-icon{transform-origin:center bottom;display:block;}
+.vehicle.vt-ambulance .car-icon{animation:siren .55s infinite;}
+.vehicle.vt-breakdown .car-icon{animation:breakd .9s infinite;}
+.vehicle.vt-emergency .car-icon{animation:emerge .45s infinite;}
+.vehicle.selected .car-icon{filter:drop-shadow(0 0 16px var(--accent)) drop-shadow(0 0 32px rgba(0,212,255,.4));}
+.signal-l,.signal-r{position:absolute;width:4px;height:4px;border-radius:50%;background:var(--amber);
+  box-shadow:0 0 6px var(--amber);animation:blink .5s step-end infinite;top:40%;margin-top:-2px;}
+.signal-l{left:-5px;} .signal-r{right:-5px;}
+.speedline{
+  position:absolute;height:1px;border-radius:1px;pointer-events:none;
+  animation:speedline .25s ease-out forwards;transform-origin:right center;
+}
 
-  .alerts-panel { display: flex; flex-direction: column; gap: 8px; }
-  .alert { background: rgba(255,59,59,0.1); border: 1px solid rgba(255,59,59,0.35); border-radius: 8px; padding: 10px 14px; font-size: 13px; display: flex; justify-content: space-between; align-items: center; }
-  .alert b { font-family: 'Orbitron', sans-serif; font-size: 11px; color: var(--danger); }
-  .alert span { color: var(--muted); }
+/* V2X rings */
+.v2x-ring{
+  position:absolute;border-radius:50%;pointer-events:none;
+  border:1px solid rgba(0,212,255,.6);
+  animation:v2x 1.4s ease-out forwards;
+}
 
-  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 16px 18px; transition: opacity 0.3s, border-color 0.3s; }
-  .card.has-alert { border-color: rgba(255,59,59,0.5); }
-  .card.breakdown-card { border-color: rgba(177,140,255,0.5); }
-  .card.stale { opacity: 0.4; }
-  .card-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
-  .card-id { font-family: 'Orbitron', sans-serif; font-size: 14px; font-weight: 700; letter-spacing: 1px; }
-  .badge { font-family: 'Orbitron', sans-serif; font-size: 9px; letter-spacing: 1px; padding: 3px 8px; border-radius: 4px; background: rgba(59,158,255,0.15); color: var(--safe); }
-  .badge.warn { background: rgba(255,59,59,0.15); color: var(--danger); }
-  .badge.breakdown-badge { background: rgba(177,140,255,0.18); color: var(--breakdown); }
-  .badge.stale-badge { background: rgba(107,118,128,0.2); color: var(--muted); }
-  .readout { display: flex; justify-content: space-between; font-size: 13px; margin-bottom: 5px; color: var(--muted); }
-  .readout b { color: var(--text); font-weight: 600; }
-  .health-healthy { color: var(--safe) !important; }
-  .health-monitor { color: var(--amber) !important; }
-  .health-service_soon { color: var(--danger) !important; }
+/* Tooltip */
+#tooltip{
+  position:absolute;display:none;pointer-events:none;
+  background:rgba(4,12,22,.96);border:1px solid var(--accent2);
+  border-radius:10px;padding:12px 16px;font-size:12px;max-width:220px;
+  z-index:800;box-shadow:0 4px 30px rgba(0,0,0,.7),0 0 20px rgba(0,212,255,.1);
+  animation:fadein .12s ease;
+}
+#tooltip .tid{font-family:'Orbitron',sans-serif;font-size:10px;color:var(--accent);margin-bottom:7px;display:block;}
+#tooltip .tr{display:flex;justify-content:space-between;gap:12px;color:var(--muted);margin-bottom:2px;font-size:12px;}
+#tooltip .tr span:last-child{color:var(--text);font-weight:600;}
 
-  .wear-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--line); }
-  .wear-item { display: flex; flex-direction: column; gap: 4px; }
-  .wear-label { font-size: 10px; color: var(--muted); letter-spacing: 0.5px; }
-  .wear-bar-track { height: 5px; background: #1a2028; border-radius: 3px; overflow: hidden; }
-  .wear-bar-fill { height: 100%; border-radius: 3px; transition: width 0.4s ease, background 0.4s ease; }
-  .wear-pct { font-size: 10px; color: var(--text); font-weight: 600; }
+/* ── SIDE PANEL ──────────────────────────────────────────────────────── */
+.side{
+  display:flex;flex-direction:column;overflow:hidden;
+  background:linear-gradient(180deg,rgba(4,10,18,.97) 0%,rgba(4,10,18,.94) 100%);
+  border-left:1px solid var(--line);
+}
+.side-tabs{display:flex;border-bottom:1px solid var(--line);}
+.stab{
+  flex:1;padding:8px 4px;font-family:'Orbitron',sans-serif;font-size:8px;letter-spacing:1.5px;
+  color:var(--muted);text-align:center;cursor:pointer;
+  border-bottom:2px solid transparent;transition:color .2s,border-color .2s;
+}
+.stab.active{color:var(--accent);border-bottom-color:var(--accent);}
+.tab-pane{display:none;flex:1;overflow-y:auto;padding:8px;flex-direction:column;gap:7px;}
+.tab-pane.active{display:flex;}
+::-webkit-scrollbar{width:3px;} ::-webkit-scrollbar-track{background:transparent;} ::-webkit-scrollbar-thumb{background:var(--line2);border-radius:2px;}
 
-  .controls { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--line); display: flex; flex-direction: column; gap: 6px; }
-  .control-row { display: flex; gap: 6px; }
-  .control-row input { flex: 1; min-width: 0; background: #0f1317; border: 1px solid var(--line); border-radius: 5px; color: var(--text); font-family: 'Rajdhani', sans-serif; font-size: 13px; padding: 6px 8px; }
-  .control-row input:focus { outline: 1px solid var(--accent); }
-  .control-row button { font-family: 'Orbitron', sans-serif; font-size: 10px; letter-spacing: 1px; background: var(--line); color: var(--text); border: none; border-radius: 5px; padding: 0 12px; cursor: pointer; }
-  .control-row button:hover { background: var(--accent); color: #0b0e11; }
-  .breakdown-btn { width: 100%; font-family: 'Orbitron', sans-serif; font-size: 10px; letter-spacing: 1px; background: rgba(177,140,255,0.15); color: var(--breakdown); border: 1px solid rgba(177,140,255,0.4); border-radius: 5px; padding: 7px 0; cursor: pointer; margin-top: 4px; }
-  .breakdown-btn:hover { background: var(--breakdown); color: #0b0e11; }
+/* ── VEHICLE CARDS ───────────────────────────────────────────────────── */
+.vcard{
+  background:rgba(8,16,28,.9);border:1px solid rgba(0,180,255,.15);
+  border-radius:10px;padding:10px 12px;cursor:pointer;
+  transition:border-color .25s,box-shadow .25s;
+}
+.vcard:hover{border-color:rgba(0,212,255,.4);}
+.vcard.selected{border-color:var(--accent);box-shadow:0 0 16px rgba(0,212,255,.12);}
+.vcard.has-alert{border-color:rgba(255,58,58,.45);}
+.vcard.breakdown-card{border-color:rgba(176,108,255,.4);}
+.vcard.stale{opacity:.4;}
+.vcard-top{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;}
+.vcard-id{font-family:'Orbitron',sans-serif;font-size:11px;font-weight:700;letter-spacing:.5px;
+  display:flex;align-items:center;gap:5px;}
+.badge{font-family:'Orbitron',sans-serif;font-size:7px;letter-spacing:1px;padding:2px 7px;border-radius:4px;}
+.bn{background:rgba(0,255,179,.08);color:var(--safe);border:1px solid rgba(0,255,179,.25);}
+.bw{background:rgba(255,58,58,.1);color:var(--danger);border:1px solid rgba(255,58,58,.3);}
+.bb{background:rgba(176,108,255,.1);color:var(--purple);border:1px solid rgba(176,108,255,.3);}
+.bs{background:rgba(80,100,120,.12);color:var(--muted);border:1px solid rgba(80,100,120,.25);}
+.readout{display:flex;justify-content:space-between;font-size:12px;margin-bottom:2px;color:var(--muted);}
+.readout b{color:var(--text);font-weight:600;}
+.readout b.safe{color:var(--safe);} .readout b.danger{color:var(--danger);} .readout b.amber{color:var(--amber);}
+.wear-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:5px;margin-top:8px;padding-top:8px;border-top:1px solid rgba(0,180,255,.1);}
+.wear-item{display:flex;flex-direction:column;gap:2px;}
+.wlbl{font-size:7px;color:var(--muted);text-transform:uppercase;}
+.wtrack{height:3px;background:rgba(255,255,255,.06);border-radius:2px;overflow:hidden;}
+.wfill{height:100%;border-radius:2px;transition:width .5s,background .5s;}
+.wpct{font-size:9px;color:var(--text);font-weight:600;}
+.ctrl-block{margin-top:8px;padding-top:8px;border-top:1px solid rgba(0,180,255,.1);display:flex;flex-direction:column;gap:5px;}
+.ctrl-row{display:flex;gap:4px;}
+.ctrl-row input{flex:1;background:rgba(0,0,0,.5);border:1px solid var(--line);border-radius:4px;color:var(--text);font-family:'Rajdhani',sans-serif;font-size:12px;padding:4px 7px;}
+.ctrl-row input:focus{outline:1px solid var(--accent);}
+.ctrl-row button{font-family:'Orbitron',sans-serif;font-size:7px;background:rgba(0,212,255,.1);color:var(--accent);border:1px solid rgba(0,212,255,.3);border-radius:4px;padding:0 9px;cursor:pointer;white-space:nowrap;}
+.ctrl-row button:hover{background:rgba(0,212,255,.25);}
+.bd-btn{width:100%;font-family:'Orbitron',sans-serif;font-size:7px;letter-spacing:1px;background:rgba(176,108,255,.08);color:var(--purple);border:1px solid rgba(176,108,255,.25);border-radius:4px;padding:6px 0;cursor:pointer;transition:all .2s;}
+.bd-btn:hover{background:rgba(176,108,255,.2);}
 
-  .empty { grid-column: 1 / -1; text-align: center; color: var(--muted); padding: 60px 0; font-size: 14px; }
+/* alert/notif */
+.acrd{background:rgba(255,58,58,.07);border:1px solid rgba(255,58,58,.3);border-radius:8px;padding:8px 12px;animation:fadein .2s;}
+.acrd b{font-family:'Orbitron',sans-serif;font-size:8px;color:var(--danger);display:block;margin-bottom:2px;}
+.acrd span{color:var(--muted);font-size:12px;}
+.notif{border-radius:6px;padding:6px 10px;font-size:11px;border:1px solid;animation:fadein .2s;}
+.ni{background:rgba(0,212,255,.06);border-color:rgba(0,212,255,.2);color:var(--accent);}
+.nm{background:rgba(255,179,0,.06);border-color:rgba(255,179,0,.2);color:var(--amber);}
+.nh{background:rgba(255,179,0,.1);border-color:rgba(255,179,0,.35);color:var(--amber);}
+.nc{background:rgba(255,58,58,.08);border-color:rgba(255,58,58,.35);color:var(--danger);}
+.notif b{font-family:'Orbitron',sans-serif;font-size:8px;}
+.nt{color:var(--muted);font-size:9px;float:right;}
+
+/* spawn form */
+.sform{background:rgba(8,16,28,.9);border:1px solid var(--line);border-radius:10px;padding:12px 14px;display:flex;flex-direction:column;gap:7px;}
+.sform label{font-size:11px;color:var(--muted);display:flex;flex-direction:column;gap:3px;}
+.sform input,.sform select{background:rgba(0,0,0,.5);border:1px solid var(--line);border-radius:4px;color:var(--text);font-family:'Rajdhani',sans-serif;font-size:13px;padding:5px 8px;}
+.sform input:focus,.sform select:focus{outline:1px solid var(--accent);}
+.spawn-btn{font-family:'Orbitron',sans-serif;font-size:9px;letter-spacing:1.5px;background:linear-gradient(90deg,var(--accent2),#005fa3);color:#fff;border:none;border-radius:5px;padding:9px;cursor:pointer;transition:opacity .2s,box-shadow .2s;}
+.spawn-btn:hover{opacity:.88;box-shadow:0 0 18px rgba(0,180,255,.3);}
+.empty{display:flex;flex-direction:column;align-items:center;justify-content:center;flex:1;gap:8px;color:var(--muted);font-size:12px;}
+.ei{font-size:28px;opacity:.3;}
+
+/* ── SCENARIOS MODAL ─────────────────────────────────────────────────── */
+.modal-bg{position:fixed;inset:0;z-index:1000;display:flex;align-items:center;justify-content:center;
+  background:rgba(2,6,12,.9);backdrop-filter:blur(8px);opacity:0;pointer-events:none;transition:opacity .25s;}
+.modal-bg.open{opacity:1;pointer-events:all;}
+.modal{background:linear-gradient(135deg,rgba(6,14,26,.98) 0%,rgba(4,10,20,.98) 100%);
+  border:1px solid rgba(0,212,255,.25);border-radius:18px;
+  width:860px;max-width:96vw;max-height:88vh;overflow-y:auto;padding:28px 28px 24px;position:relative;
+  box-shadow:0 8px 60px rgba(0,0,0,.8),0 0 40px rgba(0,212,255,.05);
+  animation:modal-in .25s ease;}
+.mcls{position:absolute;top:16px;right:18px;font-family:'Orbitron',sans-serif;font-size:8px;letter-spacing:1.5px;
+  color:var(--muted);background:none;border:1px solid var(--line);border-radius:4px;padding:4px 10px;cursor:pointer;transition:all .2s;}
+.mcls:hover{color:var(--text);border-color:var(--accent);}
+.mtitle{font-family:'Orbitron',sans-serif;font-size:16px;font-weight:900;letter-spacing:3px;
+  background:linear-gradient(90deg,var(--accent),var(--safe));
+  -webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;margin-bottom:3px;}
+.msub{color:var(--muted);font-size:12px;margin-bottom:20px;}
+.msect{font-family:'Orbitron',sans-serif;font-size:8px;letter-spacing:2.5px;color:var(--muted);
+  margin:16px 0 10px;padding-bottom:5px;border-bottom:1px solid var(--line);}
+.sgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:12px;}
+.scrd{
+  background:rgba(8,16,28,.95);border:1px solid rgba(0,212,255,.12);border-radius:11px;
+  padding:16px;display:flex;flex-direction:column;gap:8px;position:relative;overflow:hidden;
+  transition:all .2s;cursor:default;
+}
+.scrd:hover{transform:translateY(-2px);}
+.scrd.red{border-color:rgba(255,58,58,.2);} .scrd.red:hover{border-color:var(--danger);box-shadow:0 0 18px rgba(255,58,58,.15);}
+.scrd.amber{border-color:rgba(255,179,0,.2);} .scrd.amber:hover{border-color:var(--amber);box-shadow:0 0 18px rgba(255,179,0,.15);}
+.scrd.blue{border-color:rgba(0,212,255,.2);} .scrd.blue:hover{border-color:var(--accent);box-shadow:0 0 18px rgba(0,212,255,.15);}
+.scrd.purple{border-color:rgba(176,108,255,.2);} .scrd.purple:hover{border-color:var(--purple);box-shadow:0 0 18px rgba(176,108,255,.15);}
+.scrd.running{box-shadow:0 0 0 1.5px rgba(0,255,179,.5),0 0 22px rgba(0,255,179,.1);}
+.sc-run-badge{position:absolute;top:8px;right:8px;font-family:'Orbitron',sans-serif;font-size:6px;letter-spacing:1px;
+  padding:2px 6px;border-radius:3px;background:rgba(0,255,179,.12);color:var(--safe);border:1px solid rgba(0,255,179,.3);display:none;}
+.scrd.running .sc-run-badge{display:block;}
+.sc-icon{font-size:26px;}
+.sc-name{font-family:'Orbitron',sans-serif;font-size:10px;font-weight:700;letter-spacing:1px;color:var(--text);}
+.sc-desc{font-size:11px;color:var(--muted);line-height:1.5;flex:1;}
+.sctag{align-self:flex-start;font-family:'Orbitron',sans-serif;font-size:7px;letter-spacing:.8px;padding:2px 7px;border-radius:3px;}
+.sctag.r{background:rgba(255,58,58,.1);color:var(--danger);border:1px solid rgba(255,58,58,.25);}
+.sctag.a{background:rgba(255,179,0,.1);color:var(--amber);border:1px solid rgba(255,179,0,.25);}
+.sctag.g{background:rgba(0,255,179,.1);color:var(--safe);border:1px solid rgba(0,255,179,.25);}
+.sctag.p{background:rgba(176,108,255,.1);color:var(--purple);border:1px solid rgba(176,108,255,.25);}
+.sctag.b{background:rgba(0,212,255,.1);color:var(--accent);border:1px solid rgba(0,212,255,.25);}
+.scbtn{font-family:'Orbitron',sans-serif;font-size:8px;letter-spacing:1px;width:100%;padding:7px;
+  border-radius:6px;border:none;cursor:pointer;transition:all .18s;}
+.scrd.red .scbtn{background:rgba(255,58,58,.1);color:var(--danger);}
+.scrd.red .scbtn:hover{background:var(--danger);color:#000;}
+.scrd.amber .scbtn{background:rgba(255,179,0,.1);color:var(--amber);}
+.scrd.amber .scbtn:hover{background:var(--amber);color:#000;}
+.scrd.blue .scbtn{background:rgba(0,212,255,.1);color:var(--accent);}
+.scrd.blue .scbtn:hover{background:var(--accent);color:#000;}
+.scrd.purple .scbtn{background:rgba(176,108,255,.1);color:var(--purple);}
+.scrd.purple .scbtn:hover{background:var(--purple);color:#000;}
 </style>
 </head>
 <body>
 
-<header>
+<!-- HUD Header -->
+<div class="hud-header">
   <div>
-    <h1>V2X ROADSIDE UNIT</h1>
-    <p>Live vehicle telemetry &mdash; aggregated over UDP, pushed via WebSocket</p>
+    <div class="logo">V2X · RSU</div>
+    <div class="logo-sub">LIVE TRAFFIC COMMAND</div>
   </div>
-  <div class="status">
-    <div class="dot" id="statusDot"></div>
-    <span id="statusText">CONNECTING</span>
+  <div class="hdr-metrics">
+    <div class="hm"><div class="hm-lbl">FLEET</div><div class="hm-val safe" id="m-fleet">0</div><div class="hm-sub">vehicles</div></div>
+    <div class="hm"><div class="hm-lbl">AVG SPEED</div><div class="hm-val" id="m-speed">0</div><div class="hm-sub">km/h</div></div>
+    <div class="hm"><div class="hm-lbl">RISKS</div><div class="hm-val" id="m-risks">0</div><div class="hm-sub">TTC alerts</div></div>
+    <div class="hm"><div class="hm-lbl">BREAKDOWN</div><div class="hm-val" id="m-breakdown">0</div><div class="hm-sub">shoulder</div></div>
+    <div class="hm"><div class="hm-lbl">MSG/S</div><div class="hm-val" id="m-msgrate">0</div><div class="hm-sub">V2X</div></div>
+    <div class="hm"><div class="hm-lbl">SAFETY</div><div class="hm-val safe" id="m-safety">100</div><div class="hm-sub">/100</div></div>
   </div>
-</header>
+  <div class="ws-pill"><div class="dot" id="statusDot"></div><span id="statusText">CONNECTING</span></div>
+</div>
 
-<div class="layout" id="layout">
-  <div class="road-panel">
-    <div class="road-label">LIVE HIGHWAY VIEW</div>
-    <div class="road-stage" id="roadStage">
-      <svg id="roadSvg" viewBox="0 0 700 440" preserveAspectRatio="none"></svg>
-      <div id="tooltip"></div>
+<!-- Toolbar -->
+<div class="hud-toolbar">
+  <span class="tb-lbl">SIM</span>
+  <button class="hbtn active" id="btn-pp" onclick="togglePause()">⏸ PAUSE</button>
+  <button class="hbtn red" onclick="resetSim()">↺ RESET</button>
+  <div class="tb-sep"></div>
+  <span class="tb-lbl">DENSITY</span>
+  <button class="dbtn" id="d-light" onclick="setDensity('LIGHT')">LIGHT</button>
+  <button class="dbtn active" id="d-medium" onclick="setDensity('MEDIUM')">MED</button>
+  <button class="dbtn" id="d-rush" onclick="setDensity('RUSH')">RUSH</button>
+  <div class="tb-sep"></div>
+  <button class="hbtn scenarios" onclick="openScenarios()">🎬 SCENARIOS</button>
+  <span id="cam-info" style="margin-left:auto;font-family:'Orbitron',sans-serif;font-size:8px;color:var(--muted);letter-spacing:1.5px;"></span>
+</div>
+
+<!-- Main Scene -->
+<div class="scene">
+
+  <!-- Highway -->
+  <div class="highway" id="highway">
+    <canvas id="roadCanvas"></canvas>
+    <div id="tooltip"></div>
+    <div class="cam-overlay" id="camOverlay">CAM · AUTO · 0m</div>
+  </div>
+
+  <!-- Side panel -->
+  <div class="side">
+    <div class="side-tabs">
+      <div class="stab active" id="tab-monitor" onclick="switchTab('monitor')">MONITOR</div>
+      <div class="stab" id="tab-alerts" onclick="switchTab('alerts')">ALERTS</div>
+      <div class="stab" id="tab-spawn" onclick="switchTab('spawn')">SPAWN</div>
+    </div>
+    <div class="tab-pane active" id="pane-monitor">
+      <div class="empty" id="em-mon"><div class="ei">🛣</div><span>Waiting for vehicles…</span></div>
+      <div id="vehicle-grid" style="display:flex;flex-direction:column;gap:7px;"></div>
+    </div>
+    <div class="tab-pane" id="pane-alerts">
+      <div id="ttcAlerts" style="display:flex;flex-direction:column;gap:5px;"></div>
+      <div id="notifPanel" style="display:flex;flex-direction:column;gap:5px;margin-top:4px;"></div>
+      <div class="empty" id="em-alerts"><div class="ei">✅</div><span>No alerts</span></div>
+    </div>
+    <div class="tab-pane" id="pane-spawn">
+      <div class="sform">
+        <label>Type<select id="sp-type"><option value="SEDAN">🚗 Sedan</option><option value="SUV">🚙 SUV</option><option value="TRUCK">🚛 Truck</option><option value="AMBULANCE">🚑 Ambulance</option></select></label>
+        <label>Lane<select id="sp-lane"><option value="0">0 — Fast</option><option value="1" selected>1 — Middle</option><option value="2">2 — Slow</option></select></label>
+        <label>Speed (m/s)<input type="number" id="sp-speed" value="22" min="5" max="50" step="1"></label>
+        <label>Initial Wear (%)<input type="number" id="sp-wear" value="10" min="0" max="90" step="5"></label>
+        <button class="spawn-btn" onclick="spawnVehicle()">▶ SPAWN VEHICLE</button>
+      </div>
     </div>
   </div>
+</div>
 
-  <div class="side-panel">
-    <div class="monitor-label" id="notifLabel" style="display:none;">NOTIFICATIONS</div>
-    <div id="notifPanel" class="notif-panel"></div>
-    <div id="alertsPanel" class="alerts-panel"></div>
-    <div class="monitor-label">VEHICLE MONITOR</div>
-    <div id="grid" style="display:flex; flex-direction:column; gap:12px;"></div>
+<!-- Scenarios Modal -->
+<div class="modal-bg" id="scenariosModal" onclick="closeSc(event)">
+  <div class="modal" onclick="event.stopPropagation()">
+    <button class="mcls" onclick="closeSc()">✕ CLOSE</button>
+    <div class="mtitle">SCENARIO CENTRE</div>
+    <div class="msub">Activate a scenario and watch vehicles respond live on the highway.</div>
+
+    <div class="msect">🔴 EMERGENCY</div>
+    <div class="sgrid">
+      <div class="scrd red" id="sc-emergency_brake"><div class="sc-run-badge">RUNNING</div><div class="sc-icon">🛑</div><div class="sc-name">EMERGENCY BRAKE</div><div class="sc-desc">Lead vehicle brakes hard, chain reaction tests V2V collision-warning.</div><div class="sctag r">COLLISION RISK</div><button class="scbtn" onclick="runSc('emergency_brake','sc-emergency_brake')">▶ ACTIVATE</button></div>
+      <div class="scrd red" id="sc-ambulance"><div class="sc-run-badge">RUNNING</div><div class="sc-icon">🚑</div><div class="sc-name">AMBULANCE RUN</div><div class="sc-desc">High-speed ambulance dispatched. Traffic yields via V2X commands.</div><div class="sctag r">PRIORITY</div><button class="scbtn" onclick="runSc('ambulance','sc-ambulance')">▶ ACTIVATE</button></div>
+      <div class="scrd red" id="sc-overtake"><div class="sc-run-badge">RUNNING</div><div class="sc-icon">🏎</div><div class="sc-name">HIGH-SPEED OVERTAKE</div><div class="sc-desc">Aggressive overtaking in fast lane tests lane-change dynamics.</div><div class="sctag r">HIGH SPEED</div><button class="scbtn" onclick="runSc('overtake','sc-overtake')">▶ ACTIVATE</button></div>
+    </div>
+
+    <div class="msect">🟠 MAINTENANCE</div>
+    <div class="sgrid">
+      <div class="scrd amber" id="sc-overheat"><div class="sc-run-badge">RUNNING</div><div class="sc-icon">🌡</div><div class="sc-name">ENGINE OVERHEAT</div><div class="sc-desc">Rapid temp rise triggers wear alerts. Vehicle eventually pulls over.</div><div class="sctag a">BREAKDOWN RISK</div><button class="scbtn" onclick="runSc('overheat','sc-overheat')">▶ ACTIVATE</button></div>
+      <div class="scrd amber" id="sc-tyre_failure"><div class="sc-run-badge">RUNNING</div><div class="sc-icon">🔧</div><div class="sc-name">TYRE FAILURE</div><div class="sc-desc">Rapid tyre degradation — vehicle loses control and pulls to shoulder.</div><div class="sctag a">MECHANICAL</div><button class="scbtn" onclick="runSc('tyre_failure','sc-tyre_failure')">▶ ACTIVATE</button></div>
+    </div>
+
+    <div class="msect">🟢 TRAFFIC FLOW</div>
+    <div class="sgrid">
+      <div class="scrd blue" id="sc-convoy"><div class="sc-run-badge">RUNNING</div><div class="sc-icon">🚛</div><div class="sc-name">TRUCK CONVOY</div><div class="sc-desc">3-truck platoon in slow lane with V2V-synced tight headway.</div><div class="sctag g">PLATOONING</div><button class="scbtn" onclick="runSc('convoy','sc-convoy')">▶ ACTIVATE</button></div>
+      <div class="scrd blue" id="sc-rush_hour"><div class="sc-run-badge">RUNNING</div><div class="sc-icon">🚦</div><div class="sc-name">RUSH HOUR</div><div class="sc-desc">Max density burst — mixed vehicles injected simultaneously.</div><div class="sctag g">HIGH DENSITY</div><button class="scbtn" onclick="runSc('rush_hour','sc-rush_hour')">▶ ACTIVATE</button></div>
+      <div class="scrd purple" id="sc-multi_breakdown"><div class="sc-run-badge">RUNNING</div><div class="sc-icon">⚠</div><div class="sc-name">MULTI BREAKDOWN</div><div class="sc-desc">Two vehicles break down in adjacent lanes — near-roadblock.</div><div class="sctag p">ROAD HAZARD</div><button class="scbtn" onclick="runSc('multi_breakdown','sc-multi_breakdown')">▶ ACTIVATE</button></div>
+    </div>
   </div>
 </div>
-<div class="empty" id="empty">Waiting for vehicle broadcasts&hellip;</div>
 
 <script>
-  // ---- Perspective road geometry (logical 700x440 space) ----
-  const W = 700, H = 440;
-  const horizonY = 70, bottomY = 440;
-  const bottomHalfWidth = 300, topHalfWidth = 55;
-  const centerX = 320;
-  const numLanes = 3;
+// ═══════════════════════════════════════════════════════════════════════
+//  CANVAS-BASED HIGHWAY RENDERER
+//  Perspective road: vehicles at horizon (far) are small, near=large
+//  d=1 → far/top (horizon), d=0 → near/bottom (camera)
+// ═══════════════════════════════════════════════════════════════════════
+const cv    = document.getElementById('roadCanvas');
+const ctx   = cv.getContext('2d');
+const hwy   = document.getElementById('highway');
 
-  function yAt(d) { return bottomY - d * (bottomY - horizonY); }
-  function leftXAt(d) { return centerX - (bottomHalfWidth - d * (bottomHalfWidth - topHalfWidth)); }
-  function rightXAt(d) { return centerX + (bottomHalfWidth - d * (bottomHalfWidth - topHalfWidth)); }
-  function laneXAt(d, lane) {
-    if (lane === 3) {
-      const roadWidth = rightXAt(d) - leftXAt(d);
-      return rightXAt(d) + roadWidth * 0.2;
+// Road geometry helpers
+const NUM_LANES = 3;
+const VIEW_HALF = 160;  // metres visible each side of camera
+
+let W, H, HY, BY, CLX, CRX, BLX, BRX;
+// HY = horizon Y (top of road), BY = bottom Y
+// CL/CR = centre-left/right at horizon, BL/BR = bottom left/right
+
+function resizeCanvas() {
+  const r = hwy.getBoundingClientRect();
+  W = cv.width  = r.width;
+  H = cv.height = r.height;
+  HY = H * 0.28;  BY = H;
+  const hHW = W * 0.04, bHW = W * 0.46;
+  CLX = W/2 - hHW; CRX = W/2 + hHW;
+  BLX = W/2 - bHW; BRX = W/2 + bHW;
+}
+
+function yAt(d)    { return BY - d*(BY-HY); }
+function lxAt(d)   { return W/2 - ((W/2-BLX) - d*((W/2-BLX)-(W/2-CLX))); }
+function rxAt(d)   { return W/2 + ((BRX-W/2) - d*((BRX-W/2)-(CRX-W/2))); }
+function laneXAt(d, lane) {
+  if (lane >= 3) return rxAt(d) + (rxAt(d)-lxAt(d))*0.28;
+  return lxAt(d) + (lane+0.5)/NUM_LANES*(rxAt(d)-lxAt(d));
+}
+function scaleAt(d) { return 0.18 + (1-d)*0.82; }  // near=1.0, far=0.18
+
+// Lane dash animation offset
+let dashOffset = 0;
+
+// ── DRAW ROAD ──────────────────────────────────────────────────────────
+function drawRoad() {
+  ctx.clearRect(0,0,W,H);
+
+  // Sky gradient
+  const sky = ctx.createLinearGradient(0,0,0,HY);
+  sky.addColorStop(0,'#020408');
+  sky.addColorStop(1,'#05101a');
+  ctx.fillStyle = sky;
+  ctx.fillRect(0,0,W,HY);
+
+  // Horizon glow
+  const hglow = ctx.createRadialGradient(W/2,HY,0, W/2,HY,W*0.5);
+  hglow.addColorStop(0,'rgba(0,150,220,.12)');
+  hglow.addColorStop(1,'rgba(0,0,0,0)');
+  ctx.fillStyle = hglow;
+  ctx.fillRect(0,0,W,HY*1.5);
+
+  // Road surface gradient (near=slightly lighter)
+  const roadGrad = ctx.createLinearGradient(0,HY,0,BY);
+  roadGrad.addColorStop(0,'#090e14');
+  roadGrad.addColorStop(0.4,'#0b1219');
+  roadGrad.addColorStop(1,'#0f1820');
+  ctx.fillStyle = roadGrad;
+  ctx.beginPath();
+  ctx.moveTo(BLX,BY); ctx.lineTo(CLX,HY);
+  ctx.lineTo(CRX,HY); ctx.lineTo(BRX,BY);
+  ctx.closePath(); ctx.fill();
+
+  // Road edges (bright)
+  ctx.strokeStyle='rgba(0,180,255,.4)'; ctx.lineWidth=1.5;
+  ctx.beginPath(); ctx.moveTo(BLX,BY); ctx.lineTo(CLX,HY); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(BRX,BY); ctx.lineTo(CRX,HY); ctx.stroke();
+
+  // Shoulder
+  const sw0=(BRX-BLX)*0.3, sw1=(CRX-CLX)*0.3;
+  ctx.fillStyle='rgba(5,9,12,.8)';
+  ctx.beginPath();
+  ctx.moveTo(BRX,BY); ctx.lineTo(BRX+sw0,BY);
+  ctx.lineTo(CRX+sw1,HY); ctx.lineTo(CRX,HY);
+  ctx.closePath(); ctx.fill();
+  ctx.strokeStyle='rgba(255,180,0,.3)'; ctx.lineWidth=1;
+  ctx.beginPath(); ctx.moveTo(BRX,BY); ctx.lineTo(CRX,HY); ctx.stroke();
+
+  // Animated lane dashes
+  dashOffset = (dashOffset + 1.4) % 60;
+  for (let lane=1; lane<NUM_LANES; lane++) {
+    for (let seg=0; seg<=20; seg++) {
+      const t0 = (seg*60 + dashOffset)/(20*60+60);
+      const t1 = Math.min(1,(seg*60+28+dashOffset)/(20*60+60));
+      if (t0>1 || t1<0) continue;
+      const d0=Math.max(0,Math.min(1,t0)), d1=Math.max(0,Math.min(1,t1));
+      const x0=lxAt(d0)+lane/NUM_LANES*(rxAt(d0)-lxAt(d0));
+      const x1=lxAt(d1)+lane/NUM_LANES*(rxAt(d1)-lxAt(d1));
+      const y0=yAt(d0), y1=yAt(d1);
+      const opacity = 0.2 + d0*0.5;
+      const w0 = 0.8 + (1-d0)*1.2;
+      ctx.strokeStyle=`rgba(0,180,255,${opacity})`;
+      ctx.lineWidth=w0;
+      ctx.beginPath(); ctx.moveTo(x0,y0); ctx.lineTo(x1,y1); ctx.stroke();
     }
-    const left = leftXAt(d), right = rightXAt(d);
-    return left + (lane + 0.5) / numLanes * (right - left);
   }
-  function scaleAt(d) { return 1 - d * 0.5; }
 
-  function drawRoad() {
-    const svg = document.getElementById('roadSvg');
-    let svgContent = `<polygon points="${leftXAt(0)},${yAt(0)} ${rightXAt(0)},${yAt(0)} ${rightXAt(1)},${yAt(1)} ${leftXAt(1)},${yAt(1)}" fill="var(--road)" stroke="var(--line)" stroke-width="1.5"/>`;
+  // Horizon glow line
+  ctx.strokeStyle='rgba(0,210,255,.35)'; ctx.lineWidth=1.2;
+  ctx.beginPath(); ctx.moveTo(CLX,HY); ctx.lineTo(CRX,HY); ctx.stroke();
+}
 
-    // Shoulder strip, to the right of the main road
-    const shoulderOuter0 = rightXAt(0) + (rightXAt(0) - leftXAt(0)) * 0.42;
-    const shoulderOuter1 = rightXAt(1) + (rightXAt(1) - leftXAt(1)) * 0.42;
-    svgContent += `<polygon points="${rightXAt(0)},${yAt(0)} ${shoulderOuter0},${yAt(0)} ${shoulderOuter1},${yAt(1)} ${rightXAt(1)},${yAt(1)}" fill="var(--shoulder)" stroke="var(--line)" stroke-width="1" stroke-dasharray="5 5" opacity="0.7"/>`;
+// ═══════════════════════════════════════════════════════════════════════
+//  REAL CAR SVGs — top-down view, highly detailed
+// ═══════════════════════════════════════════════════════════════════════
+function carSVG(type) {
+  type = (type||'SEDAN').toUpperCase();
 
-    for (const frac of [1/3, 2/3]) {
-      let d1x = leftXAt(0) + frac * (rightXAt(0) - leftXAt(0));
-      let d2x = leftXAt(1) + frac * (rightXAt(1) - leftXAt(1));
-      svgContent += `<line class="lane-dash" x1="${d1x}" y1="${yAt(0)}" x2="${d2x}" y2="${yAt(1)}" stroke="var(--muted)" stroke-width="2" opacity="0.5"/>`;
-    }
+  if (type==='AMBULANCE') return `
+<svg class="car-icon" width="20" height="46" viewBox="0 0 20 46" style="overflow:visible;display:block">
+  <defs>
+    <linearGradient id="ambg" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#e8e8e8"/><stop offset="50%" stop-color="#ffffff"/><stop offset="100%" stop-color="#e0e0e0"/>
+    </linearGradient>
+  </defs>
+  <!-- body -->
+  <rect x="2.5" y="2" width="15" height="42" rx="5" fill="url(#ambg)" stroke="#c0c0c0" stroke-width=".4"/>
+  <!-- hood -->
+  <path d="M4,2 Q10,1 16,2 L16,9 Q10,7.5 4,9Z" fill="#f0f0f0"/>
+  <!-- windshield -->
+  <rect x="3.8" y="4" width="12.4" height="10" rx="2" fill="rgba(140,220,255,.6)" stroke="rgba(0,0,0,.15)" stroke-width=".3"/>
+  <!-- light bar on roof -->
+  <rect x="6" y="5.5" width="2.5" height="2" rx="1" fill="#3b82f6" opacity=".95"/>
+  <rect x="11.5" y="5.5" width="2.5" height="2" rx="1" fill="#ef4444" opacity=".95"/>
+  <!-- red stripe -->
+  <rect x="2.5" y="14" width="15" height="4" fill="#dc2626" opacity=".9"/>
+  <!-- red cross -->
+  <rect x="9.25" y="22" width="1.5" height="8" rx=".75" fill="#dc2626"/>
+  <rect x="6.5" y="24.75" width="7" height="2.5" rx="1.25" fill="#dc2626"/>
+  <!-- side windows -->
+  <rect x="2.8" y="17" width="2.5" height="9" rx="1.2" fill="rgba(140,220,255,.45)" stroke="rgba(0,0,0,.1)" stroke-width=".3"/>
+  <rect x="14.7" y="17" width="2.5" height="9" rx="1.2" fill="rgba(140,220,255,.45)" stroke="rgba(0,0,0,.1)" stroke-width=".3"/>
+  <!-- rear window -->
+  <rect x="3.8" y="33" width="12.4" height="8.5" rx="2" fill="rgba(140,220,255,.45)" stroke="rgba(0,0,0,.1)" stroke-width=".3"/>
+  <!-- headlights -->
+  <rect x="3" y="2.5" width="4" height="2" rx=".8" fill="#fffde0" opacity=".95"/>
+  <rect x="13" y="2.5" width="4" height="2" rx=".8" fill="#fffde0" opacity=".95"/>
+  <!-- taillights -->
+  <rect x="3" y="41.5" width="4" height="2.5" rx=".8" class="tl" fill="#7f1d1d"/>
+  <rect x="13" y="41.5" width="4" height="2.5" rx=".8" class="tl" fill="#7f1d1d"/>
+  <!-- side mirrors -->
+  <rect x="0.5" y="10" width="2" height="3" rx=".8" fill="#d0d0d0" stroke="#b0b0b0" stroke-width=".3"/>
+  <rect x="17.5" y="10" width="2" height="3" rx=".8" fill="#d0d0d0" stroke="#b0b0b0" stroke-width=".3"/>
+  <!-- wheels -->
+  <rect x=".3" y="8" width="3" height="7" rx="1.5" fill="#1a1a2e"/>
+  <rect x="16.7" y="8" width="3" height="7" rx="1.5" fill="#1a1a2e"/>
+  <rect x=".3" y="31" width="3" height="7" rx="1.5" fill="#1a1a2e"/>
+  <rect x="16.7" y="31" width="3" height="7" rx="1.5" fill="#1a1a2e"/>
+  <!-- wheel rims -->
+  <rect x="1.2" y="9.5" width="1.5" height="4" rx=".75" fill="#2a2a4e" opacity=".7"/>
+  <rect x="17.3" y="9.5" width="1.5" height="4" rx=".75" fill="#2a2a4e" opacity=".7"/>
+  <rect x="1.2" y="32.5" width="1.5" height="4" rx=".75" fill="#2a2a4e" opacity=".7"/>
+  <rect x="17.3" y="32.5" width="1.5" height="4" rx=".75" fill="#2a2a4e" opacity=".7"/>
+</svg>`;
 
-    svg.innerHTML = svgContent;
-  }
+  if (type==='TRUCK') return `
+<svg class="car-icon" width="22" height="60" viewBox="0 0 22 60" style="overflow:visible;display:block">
+  <defs>
+    <linearGradient id="trkg" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#c97e04"/><stop offset="50%" stop-color="#f59e0b"/><stop offset="100%" stop-color="#c97e04"/>
+    </linearGradient>
+    <linearGradient id="trlg" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#b36904"/><stop offset="50%" stop-color="#d97706"/><stop offset="100%" stop-color="#b36904"/>
+    </linearGradient>
+  </defs>
+  <!-- trailer body -->
+  <rect x="2" y="20" width="18" height="38" rx="2" fill="url(#trlg)" stroke="#92400e" stroke-width=".5"/>
+  <!-- trailer ribs -->
+  <line x1="2" y1="27" x2="20" y2="27" stroke="#92400e" stroke-width=".6" opacity=".6"/>
+  <line x1="2" y1="34" x2="20" y2="34" stroke="#92400e" stroke-width=".6" opacity=".6"/>
+  <line x1="2" y1="41" x2="20" y2="41" stroke="#92400e" stroke-width=".6" opacity=".6"/>
+  <line x1="2" y1="48" x2="20" y2="48" stroke="#92400e" stroke-width=".6" opacity=".6"/>
+  <!-- cab body -->
+  <rect x="2" y="2" width="18" height="20" rx="4" fill="url(#trkg)" stroke="#92400e" stroke-width=".5"/>
+  <!-- windshield -->
+  <rect x="3.5" y="4" width="15" height="9" rx="2.5" fill="rgba(140,220,255,.55)" stroke="rgba(0,0,0,.12)" stroke-width=".3"/>
+  <!-- cab interior shade -->
+  <rect x="4" y="13" width="14" height="6" rx="1" fill="rgba(0,0,0,.2)"/>
+  <!-- headlights (wide trucks) -->
+  <rect x="2" y="3" width="5" height="2.5" rx=".8" fill="#fffde0"/>
+  <rect x="15" y="3" width="5" height="2.5" rx=".8" fill="#fffde0"/>
+  <!-- taillights -->
+  <rect x="2" y="55" width="5" height="3" rx=".8" class="tl" fill="#7f1d1d"/>
+  <rect x="15" y="55" width="5" height="3" rx=".8" class="tl" fill="#7f1d1d"/>
+  <!-- mirrors (big truck) -->
+  <rect x="-.5" y="6" width="2.5" height="4" rx="1" fill="#c97e04" stroke="#92400e" stroke-width=".3"/>
+  <rect x="20" y="6" width="2.5" height="4" rx="1" fill="#c97e04" stroke="#92400e" stroke-width=".3"/>
+  <!-- cab wheels -->
+  <rect x="-.5" y="7" width="3" height="7.5" rx="1.5" fill="#1a1a2e"/>
+  <rect x="19.5" y="7" width="3" height="7.5" rx="1.5" fill="#1a1a2e"/>
+  <!-- drive axle wheels (double) -->
+  <rect x="-.5" y="34" width="3" height="7" rx="1.5" fill="#1a1a2e"/>
+  <rect x="19.5" y="34" width="3" height="7" rx="1.5" fill="#1a1a2e"/>
+  <rect x="-.5" y="43" width="3" height="7" rx="1.5" fill="#1a1a2e"/>
+  <rect x="19.5" y="43" width="3" height="7" rx="1.5" fill="#1a1a2e"/>
+  <!-- rim highlights -->
+  <rect x=".4" y="8.5" width="1.5" height="4.5" rx=".75" fill="#2a2a4e" opacity=".7"/>
+  <rect x="20.1" y="8.5" width="1.5" height="4.5" rx=".75" fill="#2a2a4e" opacity=".7"/>
+</svg>`;
+
+  if (type==='SUV') return `
+<svg class="car-icon" width="19" height="44" viewBox="0 0 19 44" style="overflow:visible;display:block">
+  <defs>
+    <linearGradient id="suvg" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#047857"/><stop offset="40%" stop-color="#059669"/><stop offset="100%" stop-color="#047857"/>
+    </linearGradient>
+  </defs>
+  <!-- body (boxy) -->
+  <rect x="2" y="2" width="15" height="40" rx="4.5" fill="url(#suvg)" stroke="#064e3b" stroke-width=".4"/>
+  <!-- hood -->
+  <path d="M3.5,2 Q9.5,1 15.5,2 L15.5,8 Q9.5,6.5 3.5,8Z" fill="#059669"/>
+  <!-- windshield (tall) -->
+  <rect x="3.5" y="4.5" width="12" height="12" rx="2" fill="rgba(140,220,255,.55)" stroke="rgba(0,0,0,.12)" stroke-width=".3"/>
+  <!-- roof rack -->
+  <rect x="5" y="5.5" width="9" height="1.2" rx=".6" fill="rgba(0,0,0,.4)"/>
+  <rect x="5" y="9" width="9" height="1.2" rx=".6" fill="rgba(0,0,0,.4)"/>
+  <line x1="5.5" y1="5.5" x2="5.5" y2="10.7" stroke="rgba(0,0,0,.35)" stroke-width=".8"/>
+  <line x1="13.5" y1="5.5" x2="13.5" y2="10.7" stroke="rgba(0,0,0,.35)" stroke-width=".8"/>
+  <!-- cabin shade -->
+  <rect x="4" y="16" width="11" height="14" rx="1.5" fill="rgba(0,0,0,.15)"/>
+  <!-- side windows (tall) -->
+  <rect x="2.3" y="17" width="2" height="11" rx="1" fill="rgba(140,220,255,.4)" stroke="rgba(0,0,0,.1)" stroke-width=".3"/>
+  <rect x="14.7" y="17" width="2" height="11" rx="1" fill="rgba(140,220,255,.4)" stroke="rgba(0,0,0,.1)" stroke-width=".3"/>
+  <!-- rear window -->
+  <rect x="3.5" y="31" width="12" height="9" rx="2" fill="rgba(140,220,255,.4)" stroke="rgba(0,0,0,.1)" stroke-width=".3"/>
+  <!-- headlights (wide) -->
+  <rect x="2.5" y="2.5" width="5" height="2.2" rx=".8" fill="#fffde0"/>
+  <rect x="11.5" y="2.5" width="5" height="2.2" rx=".8" fill="#fffde0"/>
+  <!-- taillights -->
+  <rect x="2.5" y="39.5" width="5" height="2.5" rx=".8" class="tl" fill="#7f1d1d"/>
+  <rect x="11.5" y="39.5" width="5" height="2.5" rx=".8" class="tl" fill="#7f1d1d"/>
+  <!-- side mirrors -->
+  <rect x="0.5" y="11" width="1.8" height="3" rx=".8" fill="#047857" stroke="#064e3b" stroke-width=".3"/>
+  <rect x="16.7" y="11" width="1.8" height="3" rx=".8" fill="#047857" stroke="#064e3b" stroke-width=".3"/>
+  <!-- wheels (large) -->
+  <rect x=".3" y="9" width="3.2" height="8" rx="1.6" fill="#1a1a2e"/>
+  <rect x="15.5" y="9" width="3.2" height="8" rx="1.6" fill="#1a1a2e"/>
+  <rect x=".3" y="28" width="3.2" height="8" rx="1.6" fill="#1a1a2e"/>
+  <rect x="15.5" y="28" width="3.2" height="8" rx="1.6" fill="#1a1a2e"/>
+  <!-- rims -->
+  <rect x="1.2" y="10.5" width="1.5" height="5" rx=".75" fill="#2a3a4e" opacity=".7"/>
+  <rect x="16.3" y="10.5" width="1.5" height="5" rx=".75" fill="#2a3a4e" opacity=".7"/>
+  <rect x="1.2" y="29.5" width="1.5" height="5" rx=".75" fill="#2a3a4e" opacity=".7"/>
+  <rect x="16.3" y="29.5" width="1.5" height="5" rx=".75" fill="#2a3a4e" opacity=".7"/>
+</svg>`;
+
+  // ── SEDAN (detailed, the showcase car) ─────────────────────────────
+  return `
+<svg class="car-icon" width="17" height="42" viewBox="0 0 17 42" style="overflow:visible;display:block">
+  <defs>
+    <linearGradient id="sdag" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#1d4ed8"/><stop offset="45%" stop-color="#2563eb"/><stop offset="100%" stop-color="#1d4ed8"/>
+    </linearGradient>
+    <linearGradient id="sdsh" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="rgba(255,255,255,.18)"/><stop offset="100%" stop-color="rgba(0,0,0,0)"/>
+    </linearGradient>
+  </defs>
+  <!-- Main body — tapered front/rear, wider cabin -->
+  <path d="M8.5,1.5 Q14,3 14.5,7 L14.5,10 Q15.5,12 15.5,16 L15.5,28 Q15.5,32 14.5,34 L14,38.5 Q8.5,40.5 3,38.5 L2.5,34 Q1.5,32 1.5,28 L1.5,16 Q1.5,12 2.5,10 L2.5,7 Q3,3 8.5,1.5Z"
+        fill="url(#sdag)" stroke="#1a3fbf" stroke-width=".4"/>
+  <!-- gloss highlight on roof -->
+  <path d="M4,14 Q8.5,12.5 13,14 L13,22 Q8.5,21 4,22Z" fill="url(#sdsh)" opacity=".7"/>
+  <!-- hood (front section) -->
+  <path d="M3.5,3 Q8.5,1.8 13.5,3 L14,9.5 Q8.5,8 3,9.5Z" fill="#1e50d0"/>
+  <!-- windshield -->
+  <rect x="3.2" y="5" width="10.6" height="10" rx="2" fill="rgba(140,220,255,.55)" stroke="rgba(255,255,255,.2)" stroke-width=".3"/>
+  <!-- A-pillar shading -->
+  <path d="M3.2,5 L4.5,15 L3.2,15Z" fill="rgba(0,0,0,.25)"/>
+  <path d="M13.8,5 L12.5,15 L13.8,15Z" fill="rgba(0,0,0,.25)"/>
+  <!-- roof / cabin shade -->
+  <rect x="3.5" y="15" width="10" height="13" rx="1" fill="rgba(0,0,0,.18)"/>
+  <!-- side windows (front door) -->
+  <rect x="1.8" y="16" width="2.2" height="7" rx="1" fill="rgba(140,220,255,.4)" stroke="rgba(255,255,255,.12)" stroke-width=".3"/>
+  <rect x="13" y="16" width="2.2" height="7" rx="1" fill="rgba(140,220,255,.4)" stroke="rgba(255,255,255,.12)" stroke-width=".3"/>
+  <!-- side windows (rear door) -->
+  <rect x="1.8" y="24" width="2.2" height="5.5" rx="1" fill="rgba(140,220,255,.35)" stroke="rgba(255,255,255,.12)" stroke-width=".3"/>
+  <rect x="13" y="24" width="2.2" height="5.5" rx="1" fill="rgba(140,220,255,.35)" stroke="rgba(255,255,255,.12)" stroke-width=".3"/>
+  <!-- door seam lines -->
+  <line x1="3.8" y1="15.5" x2="3.8" y2="32" stroke="rgba(0,0,0,.3)" stroke-width=".4"/>
+  <line x1="13.2" y1="15.5" x2="13.2" y2="32" stroke="rgba(0,0,0,.3)" stroke-width=".4"/>
+  <!-- door split -->
+  <line x1="1.8" y1="23.2" x2="4" y2="23.2" stroke="rgba(0,0,0,.25)" stroke-width=".4"/>
+  <line x1="13" y1="23.2" x2="15.2" y2="23.2" stroke="rgba(0,0,0,.25)" stroke-width=".4"/>
+  <!-- rear window (smaller, C-pillar) -->
+  <rect x="3.2" y="30" width="10.6" height="7.5" rx="2" fill="rgba(140,220,255,.4)" stroke="rgba(255,255,255,.12)" stroke-width=".3"/>
+  <!-- trunk lid -->
+  <path d="M3.5,37.5 Q8.5,39.5 13.5,37.5 L14,40 Q8.5,41.5 3,40Z" fill="#1a3fbf"/>
+  <!-- headlights (DRL style) -->
+  <rect x="3" y="3.2" width="3.5" height="1.5" rx=".6" fill="#fffde0" opacity=".95"/>
+  <rect x="10.5" y="3.2" width="3.5" height="1.5" rx=".6" fill="#fffde0" opacity=".95"/>
+  <!-- DRL strip -->
+  <line x1="3.2" y1="5" x2="6.5" y2="5" stroke="rgba(255,253,200,.5)" stroke-width=".6"/>
+  <line x1="10.5" y1="5" x2="13.8" y2="5" stroke="rgba(255,253,200,.5)" stroke-width=".6"/>
+  <!-- taillights -->
+  <rect x="3" y="38.8" width="3.5" height="2" rx=".6" class="tl" fill="#7f1d1d"/>
+  <rect x="10.5" y="38.8" width="3.5" height="2" rx=".6" class="tl" fill="#7f1d1d"/>
+  <!-- tail light glow strip -->
+  <line x1="3.2" y1="38.8" x2="6.5" y2="38.8" stroke="rgba(127,29,29,.6)" stroke-width=".5"/>
+  <line x1="10.5" y1="38.8" x2="13.8" y2="38.8" stroke="rgba(127,29,29,.6)" stroke-width=".5"/>
+  <!-- side mirrors (detailed) -->
+  <path d="M0.8,11.5 L2,11 L2,14.5 L0.8,14Z" fill="#1d4ed8" stroke="#1a3fbf" stroke-width=".3"/>
+  <path d="M15,11 L16.2,11.5 L16.2,14 L15,14.5Z" fill="#1d4ed8" stroke="#1a3fbf" stroke-width=".3"/>
+  <!-- wheels (4, rounded rect) -->
+  <rect x=".2" y="9" width="3.2" height="7" rx="1.6" fill="#111"/>
+  <rect x="13.6" y="9" width="3.2" height="7" rx="1.6" fill="#111"/>
+  <rect x=".2" y="27" width="3.2" height="7" rx="1.6" fill="#111"/>
+  <rect x="13.6" y="27" width="3.2" height="7" rx="1.6" fill="#111"/>
+  <!-- rim (spoke detail) -->
+  <circle cx="1.8" cy="12.5" r="1" fill="none" stroke="#334" stroke-width=".5"/>
+  <circle cx="15.2" cy="12.5" r="1" fill="none" stroke="#334" stroke-width=".5"/>
+  <circle cx="1.8" cy="30.5" r="1" fill="none" stroke="#334" stroke-width=".5"/>
+  <circle cx="15.2" cy="30.5" r="1" fill="none" stroke="#334" stroke-width=".5"/>
+</svg>`;
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+//  STATE
+// ═══════════════════════════════════════════════════════════════════════
+const vehicles = {}, interpPos = {}, laneInterp = {}, notifications = [];
+let alerts = [], maintenance = {}, alertIds = new Set();
+let selectedId = null, isPaused = false;
+let msgCount = 0, lastMsgMs = Date.now(), msgRate = 0;
+let smoothCam = null;
+const CAM_EMA  = 0.025;
+const STALE_MS = 4500;
+
+const LANE_NAMES = ['FAST','MIDDLE','SLOW','SHOULDER'];
+const WEAR_KEYS = [
+  {key:'engineWearPct',label:'Engine'},{key:'brakeWearPct',label:'Brakes'},
+  {key:'tyreWearPct',label:'Tyres'},{key:'radiatorWearPct',label:'Radiator'},
+  {key:'acWearPct',label:'A/C'},{key:'timingBeltWearPct',label:'Belt'}
+];
+const TYPE_ICONS = {SEDAN:'🚗',SUV:'🚙',TRUCK:'🚛',AMBULANCE:'🚑'};
+
+// ── Interpolation ──────────────────────────────────────────────────────
+function iX(id) {
+  const s = interpPos[id];
+  if (!s) return vehicles[id]?.x ?? 0;
+  return s.serverX + s.speedMps * Math.min((Date.now()-s.updateMs)/1000, 1.5);
+}
+function laneF(id, target) {
+  if (!laneInterp[id]) laneInterp[id] = {cur:target};
+  const s = laneInterp[id];
+  s.cur += (target - s.cur) * 0.06;
+  if (Math.abs(target-s.cur) < 0.005) s.cur = target;
+  return s.cur;
+}
+
+// ── Camera ─────────────────────────────────────────────────────────────
+function updateCam() {
+  const ids = Object.keys(vehicles);
+  if (!ids.length) return;
+  const xs = ids.filter(id=>vehicles[id].lane!==3).map(iX);
+  const ref = xs.length ? xs : ids.map(iX);
+  const target = ref.reduce((a,b)=>a+b,0)/ref.length;
+  if (smoothCam === null) { smoothCam = target; return; }
+  smoothCam += (target - smoothCam) * CAM_EMA;
+}
+
+// ── Vehicle marker DOM management ──────────────────────────────────────
+const hwyEl = document.getElementById('highway');
+
+function createMarker(id, v) {
+  const el = document.createElement('div');
+  el.id = 'mk-'+id; el.className = 'vehicle'; el.style.opacity = '0';
+  el.innerHTML = `<div class="vtag">${id}</div>
+    <div class="car-wrap">
+      <div class="signal-l" id="sl-${id}" style="display:none"></div>
+      ${carSVG(v.vehicleType)}
+      <div class="signal-r" id="sr-${id}" style="display:none"></div>
+    </div>`;
+  el.addEventListener('click', ()=>{selectedId=selectedId===id?null:id;});
+  el.addEventListener('mouseenter', ()=>showTip(id,el));
+  el.addEventListener('mouseleave', hideTip);
+  hwyEl.appendChild(el);
+  requestAnimationFrame(()=>{el.style.transition='opacity .5s';el.style.opacity='1';});
+  return el;
+}
+
+function renderMarkers() {
+  if (smoothCam===null) return;
+  const viewMin = smoothCam - VIEW_HALF, range = VIEW_HALF*2;
+
+  Object.keys(vehicles).forEach(id=>{
+    const v  = vehicles[id];
+    const ix = iX(id);
+    const dRaw = (ix - viewMin) / range;
+
+    let el = document.getElementById('mk-'+id);
+    if (!el) el = createMarker(id, v);
+
+    if (dRaw < -0.12 || dRaw > 1.12) { el.style.display='none'; return; }
+    el.style.display = '';
+
+    const d  = Math.min(1, Math.max(0, dRaw));
+    const lf = laneF(id, v.lane);
+    const px = laneXAt(d, lf);
+    const py = yAt(d);
+    const sc = scaleAt(d);
+
+    el.style.left = px+'px';
+    el.style.top  = py+'px';
+    el.style.zIndex = Math.round((1-d)*1000)+1;
+
+    const icon = el.querySelector('.car-icon');
+    if (icon) icon.style.transform = `scale(${sc.toFixed(3)})`;
+
+    // Brake lights
+    const braking = v.brakeLights===true;
+    el.querySelectorAll('.tl').forEach(t=>
+      t.setAttribute('fill', braking?'#ff1111':v.vehicleType==='AMBULANCE'?'#991b1b':'#7f1d1d')
+    );
+
+    // Signals
+    const sl=document.getElementById('sl-'+id), sr=document.getElementById('sr-'+id);
+    if(sl) sl.style.display=(v.turnSignal==='LEFT'||v.turnSignal==='HAZARD')?'block':'none';
+    if(sr) sr.style.display=(v.turnSignal==='RIGHT'||v.turnSignal==='HAZARD')?'block':'none';
+
+    // Speed lines (for fast vehicles near bottom)
+    if (d < 0.3 && v.speedMps > 28 && Math.random() < 0.05) spawnSpeedline(px, py, sc);
+
+    // CSS class
+    let cls = 'vehicle';
+    if      (v.vehicleType==='AMBULANCE')          cls += ' vt-ambulance';
+    else if (v.status==='BREAKDOWN')               cls += ' vt-breakdown';
+    else if (v.emergency || alertIds.has(id))      cls += ' vt-emergency';
+    if (id===selectedId) cls += ' selected';
+    if (el.className !== cls) el.className = cls;
+  });
+
+  // Remove gone vehicles
+  document.querySelectorAll('[id^="mk-"]').forEach(el=>{
+    if (!vehicles[el.id.slice(3)]) el.remove();
+  });
+}
+
+// Speed lines
+function spawnSpeedline(px, py, sc) {
+  const line = document.createElement('div');
+  line.className = 'speedline';
+  const len = 30 + Math.random()*40;
+  const off = (Math.random()-.5)*18*sc;
+  line.style.cssText = `left:${px-len}px;top:${py+off}px;width:${len}px;background:rgba(0,180,255,${.1+Math.random()*.15});`;
+  hwyEl.appendChild(line);
+  line.addEventListener('animationend',()=>line.remove(),{once:true});
+}
+
+// V2X rings
+function spawnRing(px, py, sc) {
+  const ring = document.createElement('div');
+  ring.className = 'v2x-ring';
+  const sz = 14*sc;
+  ring.style.cssText = `left:${px}px;top:${py}px;width:${sz}px;height:${sz}px;`;
+  hwyEl.appendChild(ring);
+  ring.addEventListener('animationend',()=>ring.remove(),{once:true});
+}
+function spawnRandomRing() {
+  if (!smoothCam) return;
+  const ids = Object.keys(vehicles); if (!ids.length) return;
+  const id  = ids[Math.floor(Math.random()*ids.length)];
+  const v   = vehicles[id]; if (!v) return;
+  const ix  = iX(id);
+  const d   = Math.min(1,Math.max(0,(ix-(smoothCam-VIEW_HALF))/(VIEW_HALF*2)));
+  spawnRing(laneXAt(d,v.lane), yAt(d), scaleAt(d));
+}
+setInterval(spawnRandomRing, 380);
+
+// TTC lines on canvas (drawn after road)
+function drawTTCLines() {
+  if (!smoothCam) return;
+  const viewMin = smoothCam-VIEW_HALF, range=VIEW_HALF*2;
+  alerts.forEach(a=>{
+    const va=vehicles[a.from], vb=vehicles[a.to]; if(!va||!vb) return;
+    const da=Math.min(1,Math.max(0,(iX(a.from)-viewMin)/range));
+    const db=Math.min(1,Math.max(0,(iX(a.to)-viewMin)/range));
+    const urg=Math.min(1,(4-a.ttc)/4);
+    ctx.strokeStyle=`rgba(255,${Math.round(60*(1-urg))},0,${.3+urg*.5})`;
+    ctx.lineWidth=1.5+urg*2;
+    ctx.setLineDash([6,4]);
+    ctx.beginPath();
+    ctx.moveTo(laneXAt(da,va.lane),yAt(da));
+    ctx.lineTo(laneXAt(db,vb.lane),yAt(db));
+    ctx.stroke();
+    ctx.setLineDash([]);
+  });
+}
+
+// ── Tooltip ────────────────────────────────────────────────────────────
+const tipEl = document.getElementById('tooltip');
+function showTip(id,el) {
+  const v=vehicles[id]; if(!v) return;
+  tipEl.innerHTML=`<span class="tid">${TYPE_ICONS[v.vehicleType]||'🚗'} ${id}</span>
+    <div class="tr"><span>Speed</span><span>${(v.speedMps*3.6).toFixed(0)} km/h</span></div>
+    <div class="tr"><span>Lane</span><span>${LANE_NAMES[v.lane]??v.lane}</span></div>
+    <div class="tr"><span>Eng Temp</span><span>${(v.engineTemp??0).toFixed(1)}°C</span></div>
+    <div class="tr"><span>Status</span><span>${v.status}</span></div>`;
+  tipEl.style.display='block';
+  const hr=hwyEl.getBoundingClientRect(), er=el.getBoundingClientRect();
+  tipEl.style.left=Math.min(er.left-hr.left+24,hr.width-230)+'px';
+  tipEl.style.top =Math.max(4,er.top-hr.top-100)+'px';
+}
+function hideTip() { tipEl.style.display='none'; }
+
+// ═══════════════════════════════════════════════════════════════════════
+//  MAIN RENDER LOOP
+// ═══════════════════════════════════════════════════════════════════════
+function rafLoop() {
+  updateCam();
   drawRoad();
+  drawTTCLines();
+  renderMarkers();
+  if (smoothCam!==null)
+    document.getElementById('camOverlay').textContent =
+      `CAM · ${smoothCam.toFixed(0)}m · ${Object.keys(vehicles).length} VEH`;
+  requestAnimationFrame(rafLoop);
+}
 
-  // ---- Live state ----
-  const vehicles = {};
-  let alerts = [];
-  let maintenance = {};
-  const previousWear = {};
-  const notifications = [];
-  const seenVehicleIds = new Set();
-  const WEAR_COMPONENTS = [
-    { key: 'engineWearPct', label: 'ENGINE' },
-    { key: 'brakeWearPct', label: 'BRAKES' },
-    { key: 'tyreWearPct', label: 'TYRES' },
-    { key: 'radiatorWearPct', label: 'RADIATOR' },
-    { key: 'acWearPct', label: 'AC' },
-    { key: 'timingBeltWearPct', label: 'BELT' }
-  ];
-  const REASON_TEXT = {
-    ENGINE_FAILURE: 'Engine wear critical \u2014 pulling over',
-    BRAKE_FAILURE: 'Brake wear critical \u2014 pulling over',
-    TYRE_FAILURE: 'Tyre wear critical \u2014 pulling over',
-    MANUAL_TEST: 'Manual breakdown simulation'
+// ── Vehicle cards ──────────────────────────────────────────────────────
+const gridEl   = document.getElementById('vehicle-grid');
+const emptyMon = document.getElementById('em-mon');
+
+function wearCol(p) { return p>80?'var(--danger)':p>55?'var(--amber)':'var(--safe)'; }
+function hCls(s) { return s==='CRITICAL'?'danger':s==='SERVICE_SOON'?'amber':'safe'; }
+
+function buildCard(id) {
+  const v=vehicles[id]||{};
+  const icon=TYPE_ICONS[v.vehicleType]||'🚗';
+  const el=document.createElement('div'); el.id='vc-'+id; el.className='vcard';
+  el.innerHTML=`
+    <div class="vcard-top">
+      <span class="vcard-id">${icon} ${id}</span>
+      <span class="badge bn" id="vb-${id}">NORMAL</span>
+    </div>
+    <div class="readout"><span>Speed</span><b id="vs-${id}">—</b></div>
+    <div class="readout"><span>Lane</span><b id="vl-${id}">—</b></div>
+    <div class="readout"><span>Position</span><b id="vp-${id}">—</b></div>
+    <div class="readout"><span>Eng Temp</span><b id="vt-${id}">—</b></div>
+    <div class="readout" id="vhr-${id}" style="display:none"><span>Health</span><b id="vh-${id}">—</b></div>
+    <div class="wear-grid">${WEAR_KEYS.map(c=>`
+      <div class="wear-item">
+        <span class="wlbl">${c.label}</span>
+        <div class="wtrack"><div class="wfill" id="wf-${id}-${c.key}"></div></div>
+        <span class="wpct" id="wp-${id}-${c.key}">0%</span>
+      </div>`).join('')}</div>
+    <div class="ctrl-block">
+      <div class="ctrl-row">
+        <input type="number" id="cs-${id}" placeholder="Speed m/s" step="1" min="0" max="50" onclick="event.stopPropagation()">
+        <button onclick="event.stopPropagation();doSpd('${id}')">SET</button>
+      </div>
+      <div class="ctrl-row">
+        <input type="number" id="cp-${id}" placeholder="Pos m" step="10" onclick="event.stopPropagation()">
+        <button onclick="event.stopPropagation();doPos('${id}')">SET</button>
+      </div>
+      <button class="bd-btn" onclick="event.stopPropagation();doBreakdown('${id}')">⚠ SIMULATE BREAKDOWN</button>
+    </div>`;
+  el.addEventListener('click',()=>{selectedId=selectedId===id?null:id;syncSel();});
+  return el;
+}
+
+function T(eid,val){const e=document.getElementById(eid);if(e&&e.textContent!==val)e.textContent=val;}
+function CL(eid,val){const e=document.getElementById(eid);if(e&&e.className!==val)e.className=val;}
+
+function updateCard(id) {
+  const v=vehicles[id]; if(!v) return;
+  const card=document.getElementById('vc-'+id); if(!card) return;
+  const stale=Date.now()-v.timestampMillis>STALE_MS, hasAl=alertIds.has(id), isBD=v.status==='BREAKDOWN', isSel=id===selectedId;
+  let cc='vcard';
+  if(stale)cc+=' stale'; if(hasAl)cc+=' has-alert'; if(isBD)cc+=' breakdown-card'; if(isSel)cc+=' selected';
+  if(card.className!==cc)card.className=cc;
+  let bc,bt;
+  if(stale){bc='badge bs';bt='STALE';}
+  else if(isBD){bc='badge bb';bt='PULLED OVER';}
+  else if(v.emergency||hasAl){bc='badge bw';bt=v.emergency?'EMERGENCY':'TTC RISK';}
+  else{bc='badge bn';bt='NORMAL';}
+  CL('vb-'+id,bc); T('vb-'+id,bt);
+  T('vs-'+id,(v.speedMps*3.6).toFixed(0)+' km/h');
+  T('vl-'+id,LANE_NAMES[v.lane]??'L'+v.lane);
+  T('vp-'+id,v.x.toFixed(0)+' m');
+  const te=document.getElementById('vt-'+id);
+  if(te){const tv=(v.engineTemp??0).toFixed(1)+'°C';if(te.textContent!==tv)te.textContent=tv;te.className=(v.engineTemp??0)>100?'danger':(v.engineTemp??0)>90?'amber':'';}
+  const mnt=maintenance[id]; const hr=document.getElementById('vhr-'+id);
+  if(hr)hr.style.display=mnt?'':'none';
+  if(mnt){const he=document.getElementById('vh-'+id);if(he){const ht=mnt.healthStatus.replace('_',' ')+' · '+Math.round(mnt.predictedRul)+'h';if(he.textContent!==ht)he.textContent=ht;he.className=hCls(mnt.healthStatus);}}
+  WEAR_KEYS.forEach(c=>{const p=v[c.key]??0,w=p.toFixed(0)+'%';const fe=document.getElementById('wf-'+id+'-'+c.key);const pe=document.getElementById('wp-'+id+'-'+c.key);if(fe&&fe.style.width!==w){fe.style.width=w;fe.style.background=wearCol(p);}if(pe&&pe.textContent!==w)pe.textContent=w;});
+}
+
+function syncSel(){Object.keys(vehicles).forEach(id=>{const c=document.getElementById('vc-'+id);if(!c)return;const w=id===selectedId;if(w&&!c.classList.contains('selected'))c.classList.add('selected');if(!w&&c.classList.contains('selected'))c.classList.remove('selected');});}
+
+function syncCards(){
+  const ids=Object.keys(vehicles);
+  emptyMon.style.display=ids.length?'none':'flex';
+  gridEl.style.display=ids.length?'flex':'none';
+  if(!ids.length)return;
+  const sorted=[...ids].sort((a,b)=>iX(b)-iX(a));
+  sorted.forEach(id=>{if(!document.getElementById('vc-'+id))gridEl.appendChild(buildCard(id));});
+  document.querySelectorAll('[id^="vc-"]').forEach(el=>{if(!vehicles[el.id.slice(3)])el.remove();});
+  if(!gridEl.contains(document.activeElement)){
+    sorted.forEach((id,i)=>{const c=document.getElementById('vc-'+id);if(c&&gridEl.children[i]!==c)gridEl.insertBefore(c,gridEl.children[i]||null);});
+  }
+  sorted.forEach(updateCard);
+}
+setInterval(syncCards,800);
+
+// Metrics
+function updateMetrics(){
+  const vs=Object.values(vehicles); if(!vs.length)return;
+  const fleet=vs.filter(v=>v.status!=='BREAKDOWN'&&v.lane!==3).length;
+  const avgSpd=vs.reduce((s,v)=>s+v.speedMps,0)/vs.length*3.6;
+  const bds=vs.filter(v=>v.status==='BREAKDOWN').length, risks=alerts.length;
+  const safety=Math.max(0,100-risks*12-bds*8);
+  T('m-fleet',fleet+'');T('m-speed',avgSpd.toFixed(0));
+  T('m-risks',risks+'');T('m-breakdown',bds+'');
+  T('m-msgrate',msgRate.toFixed(1));T('m-safety',safety.toFixed(0));
+  const se=document.getElementById('m-safety');if(se)se.className='hm-val'+(safety>75?' safe':safety>45?' amber':' danger');
+  const re=document.getElementById('m-risks');if(re)re.className='hm-val'+(risks>3?' danger':risks>0?' amber':'');
+}
+setInterval(()=>{const now=Date.now();msgRate=msgCount*1000/Math.max(1,now-lastMsgMs);msgCount=0;lastMsgMs=now;updateMetrics();},1000);
+
+// Alerts tab
+const ttcEl=document.getElementById('ttcAlerts'), notifEl=document.getElementById('notifPanel'), emptyAl=document.getElementById('em-alerts');
+function addNotif(vehicleId,message,severity){const time=new Date().toLocaleTimeString();notifications.unshift({vehicleId,message,severity,time});if(notifications.length>40)notifications.pop();}
+const warnedWear={}, warnedBD={};
+function checkWear(v){
+  WEAR_KEYS.forEach(c=>{const p=v[c.key]??0,k=v.id+'_'+c.key;if(p>80&&!warnedWear[k]){addNotif(v.id,c.label+' wear '+p.toFixed(0)+'% — service soon','high');warnedWear[k]=true;}});
+  if(v.status==='BREAKDOWN'&&!warnedBD[v.id]){addNotif(v.id,'Pulled over — '+(v.reason||'breakdown'),'critical');warnedBD[v.id]=true;}
+}
+function renderAlerts(){
+  if(ttcEl)ttcEl.innerHTML=alerts.map(a=>`<div class="acrd"><b>⚡ TTC ${a.ttc.toFixed(2)}s · ${a.from} → ${a.to}</b><span>Gap: ${a.gap.toFixed(1)}m${a.ttc<2?' · CRITICAL':''}</span></div>`).join('');
+  if(notifEl)notifEl.innerHTML=notifications.slice(0,15).map(n=>`<div class="notif n${n.severity[0]}"><span class="nt">${n.time}</span><b>${n.vehicleId}</b> — ${n.message}</div>`).join('');
+  if(emptyAl)emptyAl.style.display=(alerts.length||notifications.length)?'none':'flex';
+  const te=document.getElementById('tab-alerts');if(te)te.textContent=alerts.length?`ALERTS(${alerts.length})`:'ALERTS';
+}
+setInterval(renderAlerts,500);
+
+// ── WebSocket ──────────────────────────────────────────────────────────
+const dotEl=document.getElementById('statusDot'), txtEl=document.getElementById('statusText');
+let socket;
+function connect(){
+  socket = new WebSocket(`ws://${location.host}/ws/vehicles`);
+  socket.onopen  = ()=>{dotEl.className='dot live';txtEl.textContent='LIVE';};
+  socket.onclose = ()=>{dotEl.className='dot down';txtEl.textContent='RECONNECTING';setTimeout(connect,2500);};
+  socket.onerror = ()=>socket.close();
+  socket.onmessage = evt=>{
+    msgCount++;const now=Date.now(),payload=JSON.parse(evt.data);
+    (payload.vehicles||[]).forEach(v=>{
+      const prev=interpPos[v.id];
+      if(prev){const pred=prev.serverX+prev.speedMps*Math.min((now-prev.updateMs)/1000,1.5);const drift=Math.abs(pred-v.x);interpPos[v.id]={serverX:drift>5?(pred+v.x)/2:v.x,speedMps:v.speedMps,updateMs:now};}
+      else{interpPos[v.id]={serverX:v.x,speedMps:v.speedMps,updateMs:now};}
+      if(!vehicles[v.id]){addNotif(v.id,(TYPE_ICONS[v.vehicleType]||'')+' '+(v.vehicleType||'Vehicle')+' joined highway','info');laneInterp[v.id]={cur:v.lane};}
+      vehicles[v.id]=v;checkWear(v);
+    });
+    alerts=payload.alerts||[];maintenance=payload.maintenance||{};
+    alertIds=new Set(alerts.flatMap(a=>[a.from,a.to]));
+    const active=new Set((payload.vehicles||[]).map(v=>v.id));
+    Object.keys(vehicles).forEach(id=>{if(!active.has(id)){delete vehicles[id];delete interpPos[id];delete laneInterp[id];}});
   };
+}
 
-  const roadStageEl = document.getElementById('roadStage');
-  const gridEl = document.getElementById('grid');
-  const emptyEl = document.getElementById('empty');
-  const layoutEl = document.getElementById('layout');
-  const alertsPanelEl = document.getElementById('alertsPanel');
-  const tooltipEl = document.getElementById('tooltip');
-  const statusDot = document.getElementById('statusDot');
-  const statusText = document.getElementById('statusText');
-  const STALE_MS = 3000;
-  const VIEW_HALF_RANGE = 70;
-  let socket = null;
+// ── Controls ───────────────────────────────────────────────────────────
+function switchTab(n){['monitor','alerts','spawn'].forEach(t=>{document.getElementById('tab-'+t).classList.toggle('active',t===n);document.getElementById('pane-'+t).classList.toggle('active',t===n);});}
+function togglePause(){fetch('/api/simulation/pause',{method:'POST'});isPaused=!isPaused;const b=document.getElementById('btn-pp');if(b)b.textContent=isPaused?'▶ RESUME':'⏸ PAUSE';}
+function resetSim(){Object.keys(vehicles).forEach(id=>{delete vehicles[id];delete interpPos[id];delete laneInterp[id];});smoothCam=null;fetch('/api/simulation/reset',{method:'POST'});}
+function setDensity(lv){fetch('/api/simulation/density/'+lv,{method:'POST'});['light','medium','rush'].forEach(l=>document.getElementById('d-'+l)?.classList.remove('active'));document.getElementById('d-'+lv.toLowerCase())?.classList.add('active');}
+function spawnVehicle(){const t=document.getElementById('sp-type')?.value||'SEDAN';const l=parseInt(document.getElementById('sp-lane')?.value||'1');const s=parseFloat(document.getElementById('sp-speed')?.value||'22');const w=parseFloat(document.getElementById('sp-wear')?.value||'10');fetch(`/api/simulation/spawn?type=${t}&lane=${l}&speed=${s}&wear=${w}`,{method:'POST'});}
+function doSpd(id){const v=parseFloat(document.getElementById('cs-'+id)?.value);if(!isNaN(v))fetch('/api/vehicles/command',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({vehicleId:id,field:'SPEED',value:v})});}
+function doPos(id){const v=parseFloat(document.getElementById('cp-'+id)?.value);if(!isNaN(v))fetch('/api/vehicles/command',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({vehicleId:id,field:'POSITION',value:v})});}
+function doBreakdown(id){fetch('/api/vehicles/command',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({vehicleId:id,field:'BREAKDOWN',value:1})});}
 
-  function wearColor(pct) {
-    if (pct >= 75) return 'var(--danger)';
-    if (pct >= 50) return 'var(--amber)';
-    return 'var(--safe)';
-  }
+// ── Scenarios modal ────────────────────────────────────────────────────
+function openScenarios(){document.getElementById('scenariosModal').classList.add('open');}
+function closeSc(e){if(!e||e.target===document.getElementById('scenariosModal'))document.getElementById('scenariosModal').classList.remove('open');}
+function runSc(name,cid){
+  document.querySelectorAll('.scrd.running').forEach(c=>c.classList.remove('running'));
+  fetch('/api/simulation/scenario/'+name,{method:'POST'})
+    .then(()=>{const c=document.getElementById(cid);if(c)c.classList.add('running');addNotif('SYSTEM','Scenario: '+name.replace(/_/g,' ').toUpperCase(),'info');setTimeout(()=>closeSc(),700);})
+    .catch(()=>{addNotif('SYSTEM','Scenario sent: '+name.replace(/_/g,' ').toUpperCase(),'info');setTimeout(()=>closeSc(),700);});
+}
 
-  function addNotification(vehicleId, message, severity) {
-    notifications.unshift({ vehicleId, message, severity, time: new Date().toLocaleTimeString() });
-    if (notifications.length > 12) notifications.pop();
-  }
-
-  function checkWearNotifications(v) {
-    if (!previousWear[v.id]) previousWear[v.id] = {};
-    WEAR_COMPONENTS.forEach(c => {
-      const prev = previousWear[v.id][c.key] ?? 0;
-      const curr = v[c.key] ?? 0;
-      [50, 75, 90].forEach(threshold => {
-        if (prev < threshold && curr >= threshold) {
-          const severity = threshold >= 90 ? 'critical' : (threshold >= 75 ? 'high' : 'medium');
-          const message = threshold >= 90
-            ? c.label + ' critically worn \u2014 visit a service center now'
-            : c.label + ' at ' + threshold + '% wear \u2014 plan replacement soon';
-          addNotification(v.id, message, severity);
-        }
-      });
-      previousWear[v.id][c.key] = curr;
-    });
-  }
-
-  function renderNotifications() {
-    const label = document.getElementById('notifLabel');
-    const panel = document.getElementById('notifPanel');
-    label.style.display = notifications.length ? 'block' : 'none';
-    panel.innerHTML = notifications.map(n =>
-      '<div class="notif notif-' + n.severity + '"><b>' + n.vehicleId + '</b> \u2014 ' + n.message
-      + '<span class="notif-time">' + n.time + '</span></div>'
-    ).join('');
-  }
-
-  function sendCommand(vehicleId, field, value) {
-    if (socket && socket.readyState === WebSocket.OPEN) {
-      socket.send(JSON.stringify({ vehicleId, field, value }));
-    }
-  }
-
-  function connect() {
-    const proto = location.protocol === 'https:' ? 'wss' : 'ws';
-    socket = new WebSocket(proto + '://' + location.host + '/ws/vehicles');
-
-    socket.onopen = () => { statusDot.className = 'dot live'; statusText.textContent = 'LIVE'; };
-    socket.onclose = () => { statusDot.className = 'dot down'; statusText.textContent = 'DISCONNECTED'; setTimeout(connect, 2000); };
-    socket.onerror = () => socket.close();
-    socket.onmessage = (event) => {
-      const payload = JSON.parse(event.data);
-      (payload.vehicles || []).forEach(v => {
-        if (!seenVehicleIds.has(v.id)) {
-          seenVehicleIds.add(v.id);
-          addNotification(v.id, 'joined the network', 'info');
-        }
-        vehicles[v.id] = v;
-        checkWearNotifications(v);
-      });
-      alerts = payload.alerts || [];
-      maintenance = payload.maintenance || {};
-      renderNotifications();
-      render();
-    };
-  }
-
-  function showTooltip(el, v) {
-    const reasonText = REASON_TEXT[v.reason] || v.status;
-    tooltipEl.innerHTML = '<b>' + v.id + '</b>'
-      + '<div class="tt-reason">' + reasonText + '</div>'
-      + '<div style="margin-top:6px;">Speed: ' + v.speedMps.toFixed(1) + ' m/s</div>';
-    tooltipEl.style.display = 'block';
-    const stageRect = roadStageEl.getBoundingClientRect();
-    const elRect = el.getBoundingClientRect();
-    tooltipEl.style.left = (elRect.left - stageRect.left + 20) + 'px';
-    tooltipEl.style.top = (elRect.top - stageRect.top - 10) + 'px';
-  }
-
-  function hideTooltip() { tooltipEl.style.display = 'none'; }
-
-  function render() {
-    const ids = Object.keys(vehicles);
-    layoutEl.style.display = ids.length ? 'grid' : 'none';
-    emptyEl.style.display = ids.length ? 'none' : 'block';
-    if (!ids.length) return;
-
-    // Chase camera: recenter on the average position of vehicles still in normal
-    // traffic lanes (not parked on the shoulder), so a stopped vehicle doesn't drag
-    // the view backward while everyone else keeps moving forward.
-    const activeXs = ids.map(id => vehicles[id]).filter(v => v.lane !== 3).map(v => v.x);
-    const referenceXs = activeXs.length ? activeXs : ids.map(id => vehicles[id].x);
-    const cameraX = referenceXs.reduce((a, b) => a + b, 0) / referenceXs.length;
-    const viewMin = cameraX - VIEW_HALF_RANGE;
-    const viewMax = cameraX + VIEW_HALF_RANGE;
-    const range = viewMax - viewMin;
-
-    const idsWithAlert = new Set();
-    alerts.forEach(a => { idsWithAlert.add(a.from); idsWithAlert.add(a.to); });
-
-    ids.forEach(id => {
-      const v = vehicles[id];
-      const dRaw = (v.x - viewMin) / range;
-
-      let el = document.getElementById('marker-' + id);
-      const isNew = !el;
-      if (isNew) {
-        el = document.createElement('div');
-        el.id = 'marker-' + id;
-        el.className = 'vehicle';
-        el.style.opacity = '0';
-        el.innerHTML = '<span class="tag">' + id + '</span>'
-          + '<svg class="car-icon" width="22" height="38" viewBox="0 0 16 30">'
-          + '<rect class="car-body" x="2" y="2" width="12" height="26" rx="5"/>'
-          + '<rect class="car-glass" x="4" y="9" width="8" height="9" rx="3"/>'
-          + '<circle class="car-light" cx="4.5" cy="26.5" r="1.1"/>'
-          + '<circle class="car-light" cx="11.5" cy="26.5" r="1.1"/>'
-          + '</svg>';
-        el.addEventListener('mouseenter', () => {
-          const current = vehicles[id];
-          if (current && current.status !== 'NORMAL') showTooltip(el, current);
-        });
-        el.addEventListener('mouseleave', hideTooltip);
-        roadStageEl.appendChild(el);
-        requestAnimationFrame(() => { el.style.opacity = '1'; });
-      }
-
-      if (dRaw < -0.12 || dRaw > 1.12) {
-        el.style.display = 'none';
-        return;
-      }
-      el.style.display = 'flex';
-
-      const d = Math.min(1, Math.max(0, dRaw));
-      const px = laneXAt(d, v.lane);
-      const py = yAt(d);
-      const scale = scaleAt(d);
-
-      el.style.left = (px / W * 100) + '%';
-      el.style.top = (py / H * 100) + '%';
-      el.style.zIndex = Math.round((1 - d) * 100);
-      el.querySelector('.car-icon').style.transform = 'scale(' + scale.toFixed(2) + ')';
-
-      let cls = 'vehicle';
-      if (v.status === 'BREAKDOWN') cls += ' breakdown';
-      else if (v.emergency || idsWithAlert.has(id)) cls += ' emergency';
-      el.className = cls;
-    });
-
-    alertsPanelEl.innerHTML = alerts.length === 0 ? '' : alerts.map(a =>
-      '<div class="alert"><b>COLLISION RISK</b><span>' + a.from + ' &rarr; ' + a.to
-      + ' &middot; TTC ' + a.ttc.toFixed(1) + 's &middot; gap ' + a.gap.toFixed(0) + 'm</span></div>'
-    ).join('');
-
-    if (gridEl.contains(document.activeElement)) return;
-
-    const sortedByX = [...ids].sort((a, b) => vehicles[a].x - vehicles[b].x);
-    gridEl.innerHTML = sortedByX.map(id => {
-      const v = vehicles[id];
-      const ageMs = Date.now() - v.timestampMillis;
-      const stale = ageMs > STALE_MS;
-      const hasAlert = idsWithAlert.has(id);
-      const isBreakdown = v.status === 'BREAKDOWN';
-      const badgeClass = stale ? 'badge stale-badge' : (isBreakdown ? 'badge breakdown-badge' : (v.emergency || hasAlert ? 'badge warn' : 'badge'));
-      const badgeText = stale ? 'STALE' : (isBreakdown ? 'PULLED OVER' : (v.emergency ? 'BRAKING' : (hasAlert ? 'RISK' : 'NORMAL')));
-      const laneName = v.lane === 3 ? 'SHOULDER' : (['LEFT', 'MIDDLE', 'RIGHT'][v.lane] || ('LANE ' + v.lane));
-      const health = maintenance[id];
-      const healthRow = health
-        ? '<div class="readout"><span>Engine Health</span><b class="health-' + health.healthStatus.toLowerCase() + '">'
-          + health.healthStatus.replace('_', ' ') + ' (RUL ' + Math.round(health.predictedRul) + ')</b></div>'
-        : '';
-
-      const wearGrid = '<div class="wear-grid">' + WEAR_COMPONENTS.map(c => {
-        const pct = v[c.key] ?? 0;
-        const color = wearColor(pct);
-        return '<div class="wear-item">'
-          + '<span class="wear-label">' + c.label + '</span>'
-          + '<div class="wear-bar-track"><div class="wear-bar-fill" style="width:' + pct.toFixed(0) + '%; background:' + color + ';"></div></div>'
-          + '<span class="wear-pct">' + pct.toFixed(0) + '%</span>'
-          + '</div>';
-      }).join('') + '</div>';
-
-      return '<div class="card' + (stale ? ' stale' : '') + (hasAlert ? ' has-alert' : '') + (isBreakdown ? ' breakdown-card' : '') + '">'
-        + '<div class="card-top"><span class="card-id">' + id + '</span>'
-        + '<span class="' + badgeClass + '">' + badgeText + '</span></div>'
-        + '<div class="readout"><span>Lane</span><b>' + laneName + '</b></div>'
-        + '<div class="readout"><span>Position</span><b>' + v.x.toFixed(1) + ' m</b></div>'
-        + '<div class="readout"><span>Speed</span><b>' + v.speedMps.toFixed(1) + ' m/s</b></div>'
-        + '<div class="readout"><span>Last update</span><b>' + (ageMs / 1000).toFixed(1) + 's ago</b></div>'
-        + healthRow
-        + wearGrid
-        + '<div class="controls">'
-        + '<div class="control-row"><input type="number" id="speed-' + id + '" placeholder="Speed m/s" step="1">'
-        + '<button onclick="applySpeed(\'' + id + '\')">SET</button></div>'
-        + '<div class="control-row"><input type="number" id="pos-' + id + '" placeholder="Position m" step="1">'
-        + '<button onclick="applyPosition(\'' + id + '\')">SET</button></div>'
-        + '<button class="breakdown-btn" onclick="simulateBreakdown(\'' + id + '\')">SIMULATE BREAKDOWN</button>'
-        + '</div></div>';
-    }).join('');
-  }
-
-  function applySpeed(id) {
-    const input = document.getElementById('speed-' + id);
-    const value = parseFloat(input.value);
-    if (!isNaN(value)) { sendCommand(id, 'SPEED', value); input.value = ''; }
-  }
-
-  function applyPosition(id) {
-    const input = document.getElementById('pos-' + id);
-    const value = parseFloat(input.value);
-    if (!isNaN(value)) { sendCommand(id, 'POSITION', value); input.value = ''; }
-  }
-
-  function simulateBreakdown(id) {
-    sendCommand(id, 'BREAKDOWN', 1);
-  }
-
-  setInterval(render, 500);
-  connect();
+// ── Bootstrap ──────────────────────────────────────────────────────────
+window.addEventListener('resize',()=>{resizeCanvas();});
+resizeCanvas();
+requestAnimationFrame(rafLoop);
+connect();
 </script>
-
 </body>
 </html>

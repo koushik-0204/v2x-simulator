@@ -27,7 +27,7 @@ public class VehicleBroadcastScheduler {
         this.predictiveMaintenanceService = predictiveMaintenanceService;
     }
 
-    @Scheduled(fixedRate = 500)
+    @Scheduled(fixedRate = 200)
     public void pushVehicleUpdates() {
         try {
             Collection<VehicleState> vehicles = udpListenerService.getVehicles().values();

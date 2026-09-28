@@ -21,6 +21,14 @@ public class VehicleState {
     private String status;
     private String reason;
 
+    // Simulation metadata fields (populated by TrafficSimulationService)
+    private String vehicleType = "SEDAN";      // SEDAN, SUV, TRUCK, AMBULANCE
+    private String turnSignal = "NONE";        // NONE, LEFT, RIGHT, HAZARD
+    private boolean brakeLights = false;
+    private boolean sirenActive = false;
+    private double targetSpeedMps = 0;
+    private double accelerationMps2 = 0;
+
     public VehicleState() {
     }
 
@@ -77,6 +85,35 @@ public class VehicleState {
                 status, reason);
     }
 
+    // Setters for simulation engine
+    public void setX(double x) { this.x = x; }
+    public void setLane(int lane) { this.lane = lane; }
+    public void setSpeedMps(double speedMps) { this.speedMps = speedMps; }
+    public void setTimestampMillis(long ts) { this.timestampMillis = ts; }
+    public void setEmergency(boolean emergency) { this.emergency = emergency; }
+    public void setEngineTemp(double engineTemp) { this.engineTemp = engineTemp; }
+    public void setVibration(double vibration) { this.vibration = vibration; }
+    public void setOilPressure(double oilPressure) { this.oilPressure = oilPressure; }
+    public void setCycle(double cycle) { this.cycle = cycle; }
+    public void setEngineWearPct(double v) { this.engineWearPct = Math.min(100, v); }
+    public void setBrakeWearPct(double v) { this.brakeWearPct = Math.min(100, v); }
+    public void setTyreWearPct(double v) { this.tyreWearPct = Math.min(100, v); }
+    public void setRadiatorWearPct(double v) { this.radiatorWearPct = Math.min(100, v); }
+    public void setAcWearPct(double v) { this.acWearPct = Math.min(100, v); }
+    public void setTimingBeltWearPct(double v) { this.timingBeltWearPct = Math.min(100, v); }
+    public void setStatus(String status) { this.status = status; }
+    public void setReason(String reason) { this.reason = reason; }
+    public void setVehicleType(String vehicleType) { this.vehicleType = vehicleType; }
+    public void setTurnSignal(String turnSignal) { this.turnSignal = turnSignal; }
+    public void setBrakeLights(boolean brakeLights) { this.brakeLights = brakeLights; }
+    public void setSirenActive(boolean sirenActive) { this.sirenActive = sirenActive; }
+    public void setTargetSpeedMps(double targetSpeedMps) { this.targetSpeedMps = targetSpeedMps; }
+    public void setAccelerationMps2(double accelerationMps2) { this.accelerationMps2 = accelerationMps2; }
+
+    /** Package-private — only for use by TrafficSimulationService. */
+    void setId_internal(String id) { this.id = id; }
+
+    // Getters
     public String getId() { return id; }
     public double getX() { return x; }
     public int getLane() { return lane; }
@@ -95,4 +132,10 @@ public class VehicleState {
     public double getTimingBeltWearPct() { return timingBeltWearPct; }
     public String getStatus() { return status; }
     public String getReason() { return reason; }
+    public String getVehicleType() { return vehicleType; }
+    public String getTurnSignal() { return turnSignal; }
+    public boolean isBrakeLights() { return brakeLights; }
+    public boolean isSirenActive() { return sirenActive; }
+    public double getTargetSpeedMps() { return targetSpeedMps; }
+    public double getAccelerationMps2() { return accelerationMps2; }
 }
