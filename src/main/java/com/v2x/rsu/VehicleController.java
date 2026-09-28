@@ -11,11 +11,24 @@ public class VehicleController {
 
     private final UdpListenerService udpListenerService;
     private final TrafficSimulationService simulationService;
+    private final CommandSenderService commandSenderService;
 
     public VehicleController(UdpListenerService udpListenerService,
-                             TrafficSimulationService simulationService) {
+                             TrafficSimulationService simulationService,
+                             CommandSenderService commandSenderService) {
         this.udpListenerService = udpListenerService;
         this.simulationService = simulationService;
+        this.commandSenderService = commandSenderService;
+    }
+
+    @PostMapping("/api/vehicles/command")
+    public ResponseEntity<Map<String, String>> sendCommand(@RequestBody Map<String, Object> body) {
+        String vehicleId = (String) body.get("vehicleId");
+        String field     = (String) body.get("field");
+        double value     = ((Number) body.getOrDefault("value", 0)).doubleValue();
+        simulationService.applyCommand(vehicleId, field, value);
+        commandSenderService.sendCommand(vehicleId, field, value);
+        return ok("Command sent: " + field + "=" + value + " → " + vehicleId);
     }
 
     // ── Vehicle data ─────────────────────────────────────────────────────────

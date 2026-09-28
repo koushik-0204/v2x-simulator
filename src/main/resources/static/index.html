@@ -3,351 +3,719 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>V2X RSU — Live Traffic Command</title>
+<title>V2X Highway Simulator — Live</title>
+<meta name="description" content="Real-time V2X Vehicle-to-Everything highway simulation with collision avoidance, emergency corridors, and predictive maintenance.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;600;700;900&family=Rajdhani:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
+/* ═══════════════════════════════════════════════════════════════════════
+   DESIGN SYSTEM
+   ═══════════════════════════════════════════════════════════════════════ */
 :root {
-  --bg:#04070b; --road:#0a0f15; --road2:#0c1219;
-  --panel:rgba(8,14,22,.88); --panel-b:rgba(0,180,255,.12);
-  --line:rgba(0,180,255,.18); --line2:rgba(0,180,255,.35);
-  --text:#e8f4ff; --muted:#4a6a8a;
-  --accent:#00d4ff; --accent2:#0090cc;
-  --safe:#00ffb3; --danger:#ff3a3a; --amber:#ffb300; --purple:#b06cff;
-  --sedan:#2563eb; --suv:#059669; --truck:#d97706; --amb:#dc2626;
+  --bg: #060a10;
+  --surface: #0c1118;
+  --surface2: #111820;
+  --border: rgba(56, 189, 248, 0.10);
+  --border2: rgba(56, 189, 248, 0.20);
+  --text: #e2e8f0;
+  --text-muted: #5a7a94;
+  --text-dim: #3a5468;
+  --accent: #38bdf8;
+  --accent2: #0ea5e9;
+  --green: #22d3ee;
+  --safe: #34d399;
+  --danger: #f87171;
+  --amber: #fbbf24;
+  --purple: #a78bfa;
+  --sedan-fill: #3b82f6;
+  --suv-fill: #10b981;
+  --truck-fill: #f59e0b;
+  --amb-fill: #ef4444;
+  --font: 'Inter', system-ui, sans-serif;
+  --mono: 'JetBrains Mono', 'Consolas', monospace;
+  --radius: 12px;
 }
-*{box-sizing:border-box;margin:0;padding:0;}
-html,body{width:100%;height:100%;overflow:hidden;background:var(--bg);}
-body{font-family:'Rajdhani',sans-serif;color:var(--text);display:flex;flex-direction:column;}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { width: 100%; height: 100%; overflow: hidden; background: var(--bg); }
+body {
+  font-family: var(--font);
+  color: var(--text);
+  display: flex;
+  flex-direction: column;
+}
 
-/* ── KEYFRAMES ─────────────────────────────────────────────────────── */
-@keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
-@keyframes siren{0%,49%{filter:drop-shadow(0 0 8px #f87171) brightness(1.3)}50%,100%{filter:drop-shadow(0 0 8px #60a5fa) brightness(1.3)}}
-@keyframes breakd{0%,100%{filter:drop-shadow(0 0 10px #b06cff)}50%{filter:drop-shadow(0 0 3px #b06cff)}}
-@keyframes emerge{0%,100%{filter:drop-shadow(0 0 10px #ff3a3a)}50%{filter:drop-shadow(0 0 3px #ff3a3a)}}
-@keyframes blink{0%,49%{opacity:1}50%,100%{opacity:0}}
-@keyframes v2x{from{transform:translate(-50%,-50%) scale(.2);opacity:.9}to{transform:translate(-50%,-50%) scale(3.5);opacity:0}}
-@keyframes modal-in{from{opacity:0;transform:scale(.94) translateY(10px)}to{opacity:1;transform:none}}
-@keyframes fadein{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
-@keyframes roadscrll{from{stroke-dashoffset:0}to{stroke-dashoffset:60}}
-@keyframes speedline{from{opacity:.7;transform:scaleX(0)}to{opacity:0;transform:scaleX(1)}}
-@keyframes hud-glow{0%,100%{box-shadow:0 0 0 1px rgba(0,212,255,.15)}50%{box-shadow:0 0 0 1px rgba(0,212,255,.45),0 0 20px rgba(0,212,255,.1)}}
+/* ── KEYFRAMES ───────────────────────────────────────────────────────── */
+@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.35} }
+@keyframes slideIn { from{opacity:0;transform:translateY(6px)} to{opacity:1;transform:none} }
+@keyframes glowPulse { 0%,100%{box-shadow:0 0 0 1px rgba(56,189,248,.12)} 50%{box-shadow:0 0 0 1px rgba(56,189,248,.35), 0 0 16px rgba(56,189,248,.08)} }
 
-/* ── HUD HEADER ─────────────────────────────────────────────────────── */
-.hud-header{
-  display:flex;align-items:center;gap:16px;
-  padding:8px 20px;
-  background:linear-gradient(180deg,rgba(0,10,20,.95) 0%,rgba(0,10,20,.7) 100%);
-  border-bottom:1px solid var(--line);
-  flex-shrink:0;z-index:50;
-  backdrop-filter:blur(12px);
+/* ── HEADER ──────────────────────────────────────────────────────────── */
+.header {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 10px 20px;
+  background: linear-gradient(180deg, rgba(6,10,16,.98) 0%, rgba(6,10,16,.85) 100%);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+  z-index: 50;
+  backdrop-filter: blur(16px);
 }
-.logo{font-family:'Orbitron',sans-serif;font-weight:900;font-size:15px;letter-spacing:4px;
-  background:linear-gradient(90deg,var(--accent),var(--safe));
-  -webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;}
-.logo-sub{font-size:9px;color:var(--muted);letter-spacing:2px;font-family:'Orbitron',sans-serif;}
-.hdr-metrics{display:flex;gap:1px;margin-left:auto;}
-.hm{
-  display:flex;flex-direction:column;align-items:center;
-  padding:4px 14px;border-right:1px solid var(--line);min-width:72px;
+.logo {
+  font-weight: 900;
+  font-size: 13px;
+  letter-spacing: 3px;
+  background: linear-gradient(90deg, var(--accent), var(--green));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  text-transform: uppercase;
 }
-.hm:last-child{border-right:none;}
-.hm-lbl{font-family:'Orbitron',sans-serif;font-size:7px;letter-spacing:2px;color:var(--muted);}
-.hm-val{font-family:'Orbitron',sans-serif;font-size:18px;font-weight:700;line-height:1;color:var(--accent);}
-.hm-val.safe{color:var(--safe);} .hm-val.danger{color:var(--danger);} .hm-val.amber{color:var(--amber);}
-.hm-sub{font-size:9px;color:var(--muted);}
-.ws-pill{display:flex;align-items:center;gap:6px;padding:5px 12px;border-radius:20px;border:1px solid var(--line);background:rgba(0,0,0,.4);font-family:'Orbitron',sans-serif;font-size:9px;letter-spacing:1.5px;}
-.dot{width:7px;height:7px;border-radius:50%;background:var(--muted);}
-.dot.live{background:var(--safe);box-shadow:0 0 8px var(--safe);animation:pulse 1.6s infinite;}
-.dot.down{background:var(--danger);}
+.logo-sub {
+  font-size: 9px;
+  color: var(--text-dim);
+  letter-spacing: 2px;
+  font-weight: 500;
+}
+.metrics {
+  display: flex;
+  gap: 1px;
+  margin-left: auto;
+}
+.metric {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 4px 16px;
+  border-right: 1px solid var(--border);
+  min-width: 68px;
+}
+.metric:last-child { border-right: none; }
+.metric-label {
+  font-family: var(--mono);
+  font-size: 8px;
+  font-weight: 600;
+  letter-spacing: 1.5px;
+  color: var(--text-dim);
+  text-transform: uppercase;
+}
+.metric-value {
+  font-family: var(--mono);
+  font-size: 20px;
+  font-weight: 800;
+  line-height: 1.1;
+  color: var(--accent);
+}
+.metric-value.safe { color: var(--safe); }
+.metric-value.danger { color: var(--danger); }
+.metric-value.amber { color: var(--amber); }
+.metric-unit {
+  font-size: 9px;
+  color: var(--text-dim);
+  font-weight: 500;
+}
+.ws-badge {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 14px;
+  border-radius: 20px;
+  border: 1px solid var(--border);
+  background: rgba(0,0,0,.4);
+  font-family: var(--mono);
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 1px;
+  color: var(--text-muted);
+}
+.ws-dot {
+  width: 7px; height: 7px;
+  border-radius: 50%;
+  background: var(--text-dim);
+  transition: background .3s, box-shadow .3s;
+}
+.ws-dot.live { background: var(--safe); box-shadow: 0 0 8px var(--safe); animation: pulse 1.6s infinite; }
+.ws-dot.down { background: var(--danger); box-shadow: 0 0 8px var(--danger); }
 
-/* ── HUD TOOLBAR ────────────────────────────────────────────────────── */
-.hud-toolbar{
-  display:flex;align-items:center;gap:6px;padding:6px 16px;
-  background:rgba(0,8,18,.7);border-bottom:1px solid var(--line);
-  flex-shrink:0;flex-wrap:wrap;
+/* ── TOOLBAR ─────────────────────────────────────────────────────────── */
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 16px;
+  background: rgba(6,10,16,.80);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+  flex-wrap: wrap;
+  backdrop-filter: blur(8px);
 }
-.tb-sep{width:1px;height:20px;background:var(--line);margin:0 4px;}
-.tb-lbl{font-family:'Orbitron',sans-serif;font-size:7px;letter-spacing:2px;color:var(--muted);}
-.hbtn{
-  font-family:'Orbitron',sans-serif;font-size:8px;letter-spacing:1px;
-  padding:5px 11px;border-radius:5px;border:1px solid var(--line2);
-  background:rgba(0,212,255,.06);color:var(--text);cursor:pointer;
-  transition:all .2s;white-space:nowrap;
+.tb-label {
+  font-family: var(--mono);
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: 2px;
+  color: var(--text-dim);
+  text-transform: uppercase;
 }
-.hbtn:hover{background:rgba(0,212,255,.18);border-color:var(--accent);box-shadow:0 0 12px rgba(0,212,255,.2);}
-.hbtn.active{background:rgba(0,212,255,.2);border-color:var(--accent);}
-.hbtn.red{border-color:rgba(255,58,58,.3);}
-.hbtn.red:hover{background:rgba(255,58,58,.15);border-color:var(--danger);}
-.hbtn.scenarios{
-  background:linear-gradient(90deg,rgba(0,212,255,.12),rgba(0,255,179,.08));
-  border-color:rgba(0,212,255,.5);color:var(--accent);font-size:9px;
-  animation:hud-glow 3s infinite;
+.tb-sep { width: 1px; height: 22px; background: var(--border); margin: 0 4px; }
+.btn {
+  font-family: var(--mono);
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: .8px;
+  padding: 5px 12px;
+  border-radius: 6px;
+  border: 1px solid var(--border2);
+  background: rgba(56,189,248,.05);
+  color: var(--text);
+  cursor: pointer;
+  transition: all .18s;
+  white-space: nowrap;
 }
-.hbtn.scenarios:hover{background:linear-gradient(90deg,rgba(0,212,255,.25),rgba(0,255,179,.15));}
-.dbtn{
-  font-family:'Orbitron',sans-serif;font-size:7px;letter-spacing:1px;
-  padding:4px 9px;border-radius:4px;border:1px solid var(--line);
-  background:transparent;color:var(--muted);cursor:pointer;transition:all .18s;
+.btn:hover {
+  background: rgba(56,189,248,.15);
+  border-color: var(--accent);
+  box-shadow: 0 0 12px rgba(56,189,248,.15);
 }
-.dbtn.active,.dbtn:hover{background:rgba(0,212,255,.1);border-color:var(--accent);color:var(--accent);}
+.btn.active { background: rgba(56,189,248,.15); border-color: var(--accent); }
+.btn.red { border-color: rgba(248,113,113,.25); }
+.btn.red:hover { background: rgba(248,113,113,.12); border-color: var(--danger); }
+.btn.scenario {
+  background: linear-gradient(90deg, rgba(56,189,248,.10), rgba(34,211,238,.06));
+  border-color: rgba(56,189,248,.35);
+  color: var(--accent);
+  font-weight: 700;
+  animation: glowPulse 3s infinite;
+}
+.btn.scenario:hover { background: linear-gradient(90deg, rgba(56,189,248,.22), rgba(34,211,238,.12)); }
+.density-btn {
+  font-family: var(--mono);
+  font-size: 8px;
+  font-weight: 600;
+  letter-spacing: 1px;
+  padding: 4px 10px;
+  border-radius: 5px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-dim);
+  cursor: pointer;
+  transition: all .18s;
+}
+.density-btn.active, .density-btn:hover {
+  background: rgba(56,189,248,.10);
+  border-color: var(--accent);
+  color: var(--accent);
+}
 
-/* ── MAIN SCENE AREA ─────────────────────────────────────────────────── */
-.scene{flex:1;display:grid;grid-template-columns:1fr 320px;overflow:hidden;position:relative;}
-@media(max-width:850px){.scene{grid-template-columns:1fr;}}
+/* ── MAIN LAYOUT ─────────────────────────────────────────────────────── */
+.main {
+  flex: 1;
+  display: grid;
+  grid-template-columns: 1fr 340px;
+  overflow: hidden;
+  position: relative;
+}
+@media (max-width: 900px) { .main { grid-template-columns: 1fr; } }
 
 /* ── HIGHWAY CANVAS ──────────────────────────────────────────────────── */
-.highway{position:relative;overflow:hidden;background:var(--bg);}
-.highway-svg{position:absolute;inset:0;width:100%;height:100%;}
-#roadCanvas{position:absolute;inset:0;width:100%;height:100%;}
-
-/* cam info overlay */
-.cam-overlay{
-  position:absolute;bottom:10px;left:50%;transform:translateX(-50%);
-  font-family:'Orbitron',sans-serif;font-size:9px;letter-spacing:2px;color:var(--muted);
-  background:rgba(0,0,0,.5);padding:4px 12px;border-radius:10px;border:1px solid var(--line);
-  pointer-events:none;
+.highway {
+  position: relative;
+  overflow: hidden;
+  background: var(--bg);
 }
-
-/* ── VEHICLE MARKERS ─────────────────────────────────────────────────── */
-.vehicle{
-  position:absolute;transform:translate(-50%,-50%);
-  display:flex;flex-direction:column;align-items:center;
-  pointer-events:auto;cursor:pointer;
-  transition:opacity .6s;
+#canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
 }
-.vehicle .vtag{
-  font-family:'Orbitron',sans-serif;font-size:7px;color:rgba(0,212,255,.6);
-  white-space:nowrap;margin-bottom:1px;letter-spacing:.5px;
-  text-shadow:0 0 6px rgba(0,212,255,.5);
+.cam-info {
+  position: absolute;
+  bottom: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-family: var(--mono);
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 1.5px;
+  color: var(--text-dim);
+  background: rgba(0,0,0,.6);
+  padding: 4px 14px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  pointer-events: none;
 }
-.car-wrap{position:relative;}
-.car-icon{transform-origin:center bottom;display:block;}
-.vehicle.vt-ambulance .car-icon{animation:siren .55s infinite;}
-.vehicle.vt-breakdown .car-icon{animation:breakd .9s infinite;}
-.vehicle.vt-emergency .car-icon{animation:emerge .45s infinite;}
-.vehicle.selected .car-icon{filter:drop-shadow(0 0 16px var(--accent)) drop-shadow(0 0 32px rgba(0,212,255,.4));}
-.signal-l,.signal-r{position:absolute;width:4px;height:4px;border-radius:50%;background:var(--amber);
-  box-shadow:0 0 6px var(--amber);animation:blink .5s step-end infinite;top:40%;margin-top:-2px;}
-.signal-l{left:-5px;} .signal-r{right:-5px;}
-.speedline{
-  position:absolute;height:1px;border-radius:1px;pointer-events:none;
-  animation:speedline .25s ease-out forwards;transform-origin:right center;
-}
-
-/* V2X rings */
-.v2x-ring{
-  position:absolute;border-radius:50%;pointer-events:none;
-  border:1px solid rgba(0,212,255,.6);
-  animation:v2x 1.4s ease-out forwards;
-}
-
-/* Tooltip */
-#tooltip{
-  position:absolute;display:none;pointer-events:none;
-  background:rgba(4,12,22,.96);border:1px solid var(--accent2);
-  border-radius:10px;padding:12px 16px;font-size:12px;max-width:220px;
-  z-index:800;box-shadow:0 4px 30px rgba(0,0,0,.7),0 0 20px rgba(0,212,255,.1);
-  animation:fadein .12s ease;
-}
-#tooltip .tid{font-family:'Orbitron',sans-serif;font-size:10px;color:var(--accent);margin-bottom:7px;display:block;}
-#tooltip .tr{display:flex;justify-content:space-between;gap:12px;color:var(--muted);margin-bottom:2px;font-size:12px;}
-#tooltip .tr span:last-child{color:var(--text);font-weight:600;}
 
 /* ── SIDE PANEL ──────────────────────────────────────────────────────── */
-.side{
-  display:flex;flex-direction:column;overflow:hidden;
-  background:linear-gradient(180deg,rgba(4,10,18,.97) 0%,rgba(4,10,18,.94) 100%);
-  border-left:1px solid var(--line);
+.panel {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: linear-gradient(180deg, rgba(6,10,16,.98) 0%, rgba(6,10,16,.95) 100%);
+  border-left: 1px solid var(--border);
 }
-.side-tabs{display:flex;border-bottom:1px solid var(--line);}
-.stab{
-  flex:1;padding:8px 4px;font-family:'Orbitron',sans-serif;font-size:8px;letter-spacing:1.5px;
-  color:var(--muted);text-align:center;cursor:pointer;
-  border-bottom:2px solid transparent;transition:color .2s,border-color .2s;
+.panel-tabs {
+  display: flex;
+  border-bottom: 1px solid var(--border);
 }
-.stab.active{color:var(--accent);border-bottom-color:var(--accent);}
-.tab-pane{display:none;flex:1;overflow-y:auto;padding:8px;flex-direction:column;gap:7px;}
-.tab-pane.active{display:flex;}
-::-webkit-scrollbar{width:3px;} ::-webkit-scrollbar-track{background:transparent;} ::-webkit-scrollbar-thumb{background:var(--line2);border-radius:2px;}
+.panel-tab {
+  flex: 1;
+  padding: 10px 4px;
+  font-family: var(--mono);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  color: var(--text-dim);
+  text-align: center;
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  transition: color .2s, border-color .2s;
+  text-transform: uppercase;
+}
+.panel-tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+.tab-content { display: none; flex: 1; overflow-y: auto; padding: 10px; flex-direction: column; gap: 8px; }
+.tab-content.active { display: flex; }
+::-webkit-scrollbar { width: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
 
 /* ── VEHICLE CARDS ───────────────────────────────────────────────────── */
-.vcard{
-  background:rgba(8,16,28,.9);border:1px solid rgba(0,180,255,.15);
-  border-radius:10px;padding:10px 12px;cursor:pointer;
-  transition:border-color .25s,box-shadow .25s;
+.vcard {
+  background: rgba(12,17,24,.95);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 12px 14px;
+  cursor: pointer;
+  transition: border-color .2s, box-shadow .2s;
+  animation: slideIn .25s ease;
 }
-.vcard:hover{border-color:rgba(0,212,255,.4);}
-.vcard.selected{border-color:var(--accent);box-shadow:0 0 16px rgba(0,212,255,.12);}
-.vcard.has-alert{border-color:rgba(255,58,58,.45);}
-.vcard.breakdown-card{border-color:rgba(176,108,255,.4);}
-.vcard.stale{opacity:.4;}
-.vcard-top{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;}
-.vcard-id{font-family:'Orbitron',sans-serif;font-size:11px;font-weight:700;letter-spacing:.5px;
-  display:flex;align-items:center;gap:5px;}
-.badge{font-family:'Orbitron',sans-serif;font-size:7px;letter-spacing:1px;padding:2px 7px;border-radius:4px;}
-.bn{background:rgba(0,255,179,.08);color:var(--safe);border:1px solid rgba(0,255,179,.25);}
-.bw{background:rgba(255,58,58,.1);color:var(--danger);border:1px solid rgba(255,58,58,.3);}
-.bb{background:rgba(176,108,255,.1);color:var(--purple);border:1px solid rgba(176,108,255,.3);}
-.bs{background:rgba(80,100,120,.12);color:var(--muted);border:1px solid rgba(80,100,120,.25);}
-.readout{display:flex;justify-content:space-between;font-size:12px;margin-bottom:2px;color:var(--muted);}
-.readout b{color:var(--text);font-weight:600;}
-.readout b.safe{color:var(--safe);} .readout b.danger{color:var(--danger);} .readout b.amber{color:var(--amber);}
-.wear-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:5px;margin-top:8px;padding-top:8px;border-top:1px solid rgba(0,180,255,.1);}
-.wear-item{display:flex;flex-direction:column;gap:2px;}
-.wlbl{font-size:7px;color:var(--muted);text-transform:uppercase;}
-.wtrack{height:3px;background:rgba(255,255,255,.06);border-radius:2px;overflow:hidden;}
-.wfill{height:100%;border-radius:2px;transition:width .5s,background .5s;}
-.wpct{font-size:9px;color:var(--text);font-weight:600;}
-.ctrl-block{margin-top:8px;padding-top:8px;border-top:1px solid rgba(0,180,255,.1);display:flex;flex-direction:column;gap:5px;}
-.ctrl-row{display:flex;gap:4px;}
-.ctrl-row input{flex:1;background:rgba(0,0,0,.5);border:1px solid var(--line);border-radius:4px;color:var(--text);font-family:'Rajdhani',sans-serif;font-size:12px;padding:4px 7px;}
-.ctrl-row input:focus{outline:1px solid var(--accent);}
-.ctrl-row button{font-family:'Orbitron',sans-serif;font-size:7px;background:rgba(0,212,255,.1);color:var(--accent);border:1px solid rgba(0,212,255,.3);border-radius:4px;padding:0 9px;cursor:pointer;white-space:nowrap;}
-.ctrl-row button:hover{background:rgba(0,212,255,.25);}
-.bd-btn{width:100%;font-family:'Orbitron',sans-serif;font-size:7px;letter-spacing:1px;background:rgba(176,108,255,.08);color:var(--purple);border:1px solid rgba(176,108,255,.25);border-radius:4px;padding:6px 0;cursor:pointer;transition:all .2s;}
-.bd-btn:hover{background:rgba(176,108,255,.2);}
-
-/* alert/notif */
-.acrd{background:rgba(255,58,58,.07);border:1px solid rgba(255,58,58,.3);border-radius:8px;padding:8px 12px;animation:fadein .2s;}
-.acrd b{font-family:'Orbitron',sans-serif;font-size:8px;color:var(--danger);display:block;margin-bottom:2px;}
-.acrd span{color:var(--muted);font-size:12px;}
-.notif{border-radius:6px;padding:6px 10px;font-size:11px;border:1px solid;animation:fadein .2s;}
-.ni{background:rgba(0,212,255,.06);border-color:rgba(0,212,255,.2);color:var(--accent);}
-.nm{background:rgba(255,179,0,.06);border-color:rgba(255,179,0,.2);color:var(--amber);}
-.nh{background:rgba(255,179,0,.1);border-color:rgba(255,179,0,.35);color:var(--amber);}
-.nc{background:rgba(255,58,58,.08);border-color:rgba(255,58,58,.35);color:var(--danger);}
-.notif b{font-family:'Orbitron',sans-serif;font-size:8px;}
-.nt{color:var(--muted);font-size:9px;float:right;}
-
-/* spawn form */
-.sform{background:rgba(8,16,28,.9);border:1px solid var(--line);border-radius:10px;padding:12px 14px;display:flex;flex-direction:column;gap:7px;}
-.sform label{font-size:11px;color:var(--muted);display:flex;flex-direction:column;gap:3px;}
-.sform input,.sform select{background:rgba(0,0,0,.5);border:1px solid var(--line);border-radius:4px;color:var(--text);font-family:'Rajdhani',sans-serif;font-size:13px;padding:5px 8px;}
-.sform input:focus,.sform select:focus{outline:1px solid var(--accent);}
-.spawn-btn{font-family:'Orbitron',sans-serif;font-size:9px;letter-spacing:1.5px;background:linear-gradient(90deg,var(--accent2),#005fa3);color:#fff;border:none;border-radius:5px;padding:9px;cursor:pointer;transition:opacity .2s,box-shadow .2s;}
-.spawn-btn:hover{opacity:.88;box-shadow:0 0 18px rgba(0,180,255,.3);}
-.empty{display:flex;flex-direction:column;align-items:center;justify-content:center;flex:1;gap:8px;color:var(--muted);font-size:12px;}
-.ei{font-size:28px;opacity:.3;}
-
-/* ── SCENARIOS MODAL ─────────────────────────────────────────────────── */
-.modal-bg{position:fixed;inset:0;z-index:1000;display:flex;align-items:center;justify-content:center;
-  background:rgba(2,6,12,.9);backdrop-filter:blur(8px);opacity:0;pointer-events:none;transition:opacity .25s;}
-.modal-bg.open{opacity:1;pointer-events:all;}
-.modal{background:linear-gradient(135deg,rgba(6,14,26,.98) 0%,rgba(4,10,20,.98) 100%);
-  border:1px solid rgba(0,212,255,.25);border-radius:18px;
-  width:860px;max-width:96vw;max-height:88vh;overflow-y:auto;padding:28px 28px 24px;position:relative;
-  box-shadow:0 8px 60px rgba(0,0,0,.8),0 0 40px rgba(0,212,255,.05);
-  animation:modal-in .25s ease;}
-.mcls{position:absolute;top:16px;right:18px;font-family:'Orbitron',sans-serif;font-size:8px;letter-spacing:1.5px;
-  color:var(--muted);background:none;border:1px solid var(--line);border-radius:4px;padding:4px 10px;cursor:pointer;transition:all .2s;}
-.mcls:hover{color:var(--text);border-color:var(--accent);}
-.mtitle{font-family:'Orbitron',sans-serif;font-size:16px;font-weight:900;letter-spacing:3px;
-  background:linear-gradient(90deg,var(--accent),var(--safe));
-  -webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;margin-bottom:3px;}
-.msub{color:var(--muted);font-size:12px;margin-bottom:20px;}
-.msect{font-family:'Orbitron',sans-serif;font-size:8px;letter-spacing:2.5px;color:var(--muted);
-  margin:16px 0 10px;padding-bottom:5px;border-bottom:1px solid var(--line);}
-.sgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:12px;}
-.scrd{
-  background:rgba(8,16,28,.95);border:1px solid rgba(0,212,255,.12);border-radius:11px;
-  padding:16px;display:flex;flex-direction:column;gap:8px;position:relative;overflow:hidden;
-  transition:all .2s;cursor:default;
+.vcard:hover { border-color: var(--border2); }
+.vcard.selected { border-color: var(--accent); box-shadow: 0 0 16px rgba(56,189,248,.10); }
+.vcard.alert { border-color: rgba(248,113,113,.35); }
+.vcard.breakdown { border-color: rgba(167,139,250,.35); }
+.vcard-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
 }
-.scrd:hover{transform:translateY(-2px);}
-.scrd.red{border-color:rgba(255,58,58,.2);} .scrd.red:hover{border-color:var(--danger);box-shadow:0 0 18px rgba(255,58,58,.15);}
-.scrd.amber{border-color:rgba(255,179,0,.2);} .scrd.amber:hover{border-color:var(--amber);box-shadow:0 0 18px rgba(255,179,0,.15);}
-.scrd.blue{border-color:rgba(0,212,255,.2);} .scrd.blue:hover{border-color:var(--accent);box-shadow:0 0 18px rgba(0,212,255,.15);}
-.scrd.purple{border-color:rgba(176,108,255,.2);} .scrd.purple:hover{border-color:var(--purple);box-shadow:0 0 18px rgba(176,108,255,.15);}
-.scrd.running{box-shadow:0 0 0 1.5px rgba(0,255,179,.5),0 0 22px rgba(0,255,179,.1);}
-.sc-run-badge{position:absolute;top:8px;right:8px;font-family:'Orbitron',sans-serif;font-size:6px;letter-spacing:1px;
-  padding:2px 6px;border-radius:3px;background:rgba(0,255,179,.12);color:var(--safe);border:1px solid rgba(0,255,179,.3);display:none;}
-.scrd.running .sc-run-badge{display:block;}
-.sc-icon{font-size:26px;}
-.sc-name{font-family:'Orbitron',sans-serif;font-size:10px;font-weight:700;letter-spacing:1px;color:var(--text);}
-.sc-desc{font-size:11px;color:var(--muted);line-height:1.5;flex:1;}
-.sctag{align-self:flex-start;font-family:'Orbitron',sans-serif;font-size:7px;letter-spacing:.8px;padding:2px 7px;border-radius:3px;}
-.sctag.r{background:rgba(255,58,58,.1);color:var(--danger);border:1px solid rgba(255,58,58,.25);}
-.sctag.a{background:rgba(255,179,0,.1);color:var(--amber);border:1px solid rgba(255,179,0,.25);}
-.sctag.g{background:rgba(0,255,179,.1);color:var(--safe);border:1px solid rgba(0,255,179,.25);}
-.sctag.p{background:rgba(176,108,255,.1);color:var(--purple);border:1px solid rgba(176,108,255,.25);}
-.sctag.b{background:rgba(0,212,255,.1);color:var(--accent);border:1px solid rgba(0,212,255,.25);}
-.scbtn{font-family:'Orbitron',sans-serif;font-size:8px;letter-spacing:1px;width:100%;padding:7px;
-  border-radius:6px;border:none;cursor:pointer;transition:all .18s;}
-.scrd.red .scbtn{background:rgba(255,58,58,.1);color:var(--danger);}
-.scrd.red .scbtn:hover{background:var(--danger);color:#000;}
-.scrd.amber .scbtn{background:rgba(255,179,0,.1);color:var(--amber);}
-.scrd.amber .scbtn:hover{background:var(--amber);color:#000;}
-.scrd.blue .scbtn{background:rgba(0,212,255,.1);color:var(--accent);}
-.scrd.blue .scbtn:hover{background:var(--accent);color:#000;}
-.scrd.purple .scbtn{background:rgba(176,108,255,.1);color:var(--purple);}
-.scrd.purple .scbtn:hover{background:var(--purple);color:#000;}
+.vcard-id {
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: .5px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.badge {
+  font-family: var(--mono);
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: .8px;
+  padding: 2px 8px;
+  border-radius: 4px;
+}
+.badge-normal { background: rgba(52,211,153,.08); color: var(--safe); border: 1px solid rgba(52,211,153,.20); }
+.badge-alert { background: rgba(248,113,113,.08); color: var(--danger); border: 1px solid rgba(248,113,113,.25); }
+.badge-breakdown { background: rgba(167,139,250,.08); color: var(--purple); border: 1px solid rgba(167,139,250,.25); }
+.badge-stale { background: rgba(90,122,148,.08); color: var(--text-dim); border: 1px solid rgba(90,122,148,.20); }
+.stat-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12px;
+  margin-bottom: 3px;
+  color: var(--text-muted);
+}
+.stat-row b { color: var(--text); font-weight: 700; }
+.stat-row b.safe { color: var(--safe); }
+.stat-row b.danger { color: var(--danger); }
+.stat-row b.amber { color: var(--amber); }
+.wear-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+}
+.wear-item { display: flex; flex-direction: column; gap: 2px; }
+.wear-label { font-size: 8px; color: var(--text-dim); font-weight: 600; text-transform: uppercase; letter-spacing: .5px; }
+.wear-track { height: 3px; background: rgba(255,255,255,.04); border-radius: 2px; overflow: hidden; }
+.wear-fill { height: 100%; border-radius: 2px; transition: width .5s, background .5s; }
+.wear-pct { font-family: var(--mono); font-size: 10px; font-weight: 700; color: var(--text); }
+.ctrl-section {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.ctrl-row { display: flex; gap: 4px; }
+.ctrl-row input {
+  flex: 1;
+  background: rgba(0,0,0,.5);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  color: var(--text);
+  font-family: var(--font);
+  font-size: 12px;
+  padding: 5px 8px;
+}
+.ctrl-row input:focus { outline: 1px solid var(--accent); }
+.ctrl-row button {
+  font-family: var(--mono);
+  font-size: 8px;
+  font-weight: 700;
+  background: rgba(56,189,248,.08);
+  color: var(--accent);
+  border: 1px solid rgba(56,189,248,.25);
+  border-radius: 5px;
+  padding: 0 10px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.ctrl-row button:hover { background: rgba(56,189,248,.2); }
+.breakdown-btn {
+  width: 100%;
+  font-family: var(--mono);
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  background: rgba(167,139,250,.06);
+  color: var(--purple);
+  border: 1px solid rgba(167,139,250,.20);
+  border-radius: 5px;
+  padding: 7px 0;
+  cursor: pointer;
+  transition: all .2s;
+}
+.breakdown-btn:hover { background: rgba(167,139,250,.15); }
+
+/* ── EVENT LOG ───────────────────────────────────────────────────────── */
+.event {
+  border-radius: 8px;
+  padding: 8px 12px;
+  font-size: 11px;
+  border: 1px solid;
+  animation: slideIn .2s ease;
+}
+.event-info { background: rgba(56,189,248,.04); border-color: rgba(56,189,248,.15); color: var(--accent); }
+.event-warn { background: rgba(251,191,36,.04); border-color: rgba(251,191,36,.15); color: var(--amber); }
+.event-danger { background: rgba(248,113,113,.06); border-color: rgba(248,113,113,.20); color: var(--danger); }
+.event-v2x { background: rgba(34,211,238,.04); border-color: rgba(34,211,238,.15); color: var(--green); }
+.event b { font-family: var(--mono); font-size: 9px; font-weight: 700; }
+.event-time { color: var(--text-dim); font-size: 9px; float: right; font-family: var(--mono); }
+
+/* ── TTC ALERT CARDS ─────────────────────────────────────────────────── */
+.ttc-card {
+  background: rgba(248,113,113,.05);
+  border: 1px solid rgba(248,113,113,.25);
+  border-radius: 8px;
+  padding: 8px 12px;
+  animation: slideIn .2s ease;
+}
+.ttc-card b { font-family: var(--mono); font-size: 9px; font-weight: 800; color: var(--danger); display: block; margin-bottom: 2px; }
+.ttc-card span { color: var(--text-muted); font-size: 11px; }
+
+/* ── SPAWN FORM ──────────────────────────────────────────────────────── */
+.spawn-form {
+  background: rgba(12,17,24,.95);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.spawn-form label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.spawn-form input, .spawn-form select {
+  background: rgba(0,0,0,.5);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  color: var(--text);
+  font-family: var(--font);
+  font-size: 13px;
+  padding: 6px 10px;
+}
+.spawn-form input:focus, .spawn-form select:focus { outline: 1px solid var(--accent); }
+.spawn-btn {
+  font-family: var(--mono);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 1.5px;
+  background: linear-gradient(90deg, var(--accent2), #0284c7);
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  padding: 10px;
+  cursor: pointer;
+  transition: opacity .2s, box-shadow .2s;
+}
+.spawn-btn:hover { opacity: .85; box-shadow: 0 0 20px rgba(56,189,248,.25); }
+
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  flex: 1;
+  gap: 8px;
+  color: var(--text-dim);
+  font-size: 12px;
+}
+.empty-icon { font-size: 32px; opacity: .25; }
+
+/* ── SCENARIO MODAL ──────────────────────────────────────────────────── */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(3,5,8,.92);
+  backdrop-filter: blur(10px);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity .25s;
+}
+.modal-overlay.open { opacity: 1; pointer-events: all; }
+.modal {
+  background: linear-gradient(135deg, rgba(8,14,22,.99), rgba(6,10,16,.99));
+  border: 1px solid rgba(56,189,248,.18);
+  border-radius: 18px;
+  width: 860px;
+  max-width: 96vw;
+  max-height: 88vh;
+  overflow-y: auto;
+  padding: 28px;
+  position: relative;
+  box-shadow: 0 8px 60px rgba(0,0,0,.8), 0 0 40px rgba(56,189,248,.04);
+}
+.modal-close {
+  position: absolute;
+  top: 16px;
+  right: 18px;
+  font-family: var(--mono);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  color: var(--text-dim);
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  padding: 5px 12px;
+  cursor: pointer;
+  transition: all .2s;
+}
+.modal-close:hover { color: var(--text); border-color: var(--accent); }
+.modal-title {
+  font-size: 16px;
+  font-weight: 900;
+  letter-spacing: 2px;
+  background: linear-gradient(90deg, var(--accent), var(--green));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  margin-bottom: 4px;
+  text-transform: uppercase;
+}
+.modal-sub { color: var(--text-dim); font-size: 12px; margin-bottom: 20px; }
+.modal-section {
+  font-family: var(--mono);
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 2px;
+  color: var(--text-dim);
+  margin: 16px 0 10px;
+  padding-bottom: 5px;
+  border-bottom: 1px solid var(--border);
+  text-transform: uppercase;
+}
+.scenario-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px; }
+.scard {
+  background: rgba(12,17,24,.95);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  transition: all .2s;
+  cursor: default;
+}
+.scard:hover { transform: translateY(-2px); }
+.scard.s-red { border-color: rgba(248,113,113,.18); }
+.scard.s-red:hover { border-color: var(--danger); box-shadow: 0 0 18px rgba(248,113,113,.12); }
+.scard.s-amber { border-color: rgba(251,191,36,.18); }
+.scard.s-amber:hover { border-color: var(--amber); box-shadow: 0 0 18px rgba(251,191,36,.12); }
+.scard.s-blue { border-color: rgba(56,189,248,.18); }
+.scard.s-blue:hover { border-color: var(--accent); box-shadow: 0 0 18px rgba(56,189,248,.12); }
+.scard.s-purple { border-color: rgba(167,139,250,.18); }
+.scard.s-purple:hover { border-color: var(--purple); box-shadow: 0 0 18px rgba(167,139,250,.12); }
+.scard-icon { font-size: 28px; }
+.scard-name { font-family: var(--mono); font-size: 11px; font-weight: 800; letter-spacing: .5px; color: var(--text); }
+.scard-desc { font-size: 11px; color: var(--text-muted); line-height: 1.5; flex: 1; }
+.scard-tag {
+  align-self: flex-start;
+  font-family: var(--mono);
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: .8px;
+  padding: 2px 8px;
+  border-radius: 4px;
+}
+.tag-danger { background: rgba(248,113,113,.08); color: var(--danger); border: 1px solid rgba(248,113,113,.20); }
+.tag-amber { background: rgba(251,191,36,.08); color: var(--amber); border: 1px solid rgba(251,191,36,.20); }
+.tag-safe { background: rgba(52,211,153,.08); color: var(--safe); border: 1px solid rgba(52,211,153,.20); }
+.tag-accent { background: rgba(56,189,248,.08); color: var(--accent); border: 1px solid rgba(56,189,248,.20); }
+.tag-purple { background: rgba(167,139,250,.08); color: var(--purple); border: 1px solid rgba(167,139,250,.20); }
+.scard-btn {
+  font-family: var(--mono);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: .8px;
+  width: 100%;
+  padding: 8px;
+  border-radius: 6px;
+  border: none;
+  cursor: pointer;
+  transition: all .18s;
+}
+.scard.s-red .scard-btn { background: rgba(248,113,113,.08); color: var(--danger); }
+.scard.s-red .scard-btn:hover { background: var(--danger); color: #000; }
+.scard.s-amber .scard-btn { background: rgba(251,191,36,.08); color: var(--amber); }
+.scard.s-amber .scard-btn:hover { background: var(--amber); color: #000; }
+.scard.s-blue .scard-btn { background: rgba(56,189,248,.08); color: var(--accent); }
+.scard.s-blue .scard-btn:hover { background: var(--accent); color: #000; }
+.scard.s-purple .scard-btn { background: rgba(167,139,250,.08); color: var(--purple); }
+.scard.s-purple .scard-btn:hover { background: var(--purple); color: #000; }
+
+/* ── V2X LEGEND (bottom-left) ────────────────────────────────────────── */
+.legend {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-family: var(--mono);
+  font-size: 8px;
+  font-weight: 600;
+  letter-spacing: .5px;
+  color: var(--text-dim);
+  background: rgba(0,0,0,.5);
+  padding: 8px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  pointer-events: none;
+  z-index: 10;
+}
+.legend-item { display: flex; align-items: center; gap: 6px; }
+.legend-dot {
+  width: 8px; height: 8px;
+  border-radius: 2px;
+  flex-shrink: 0;
+}
 </style>
 </head>
 <body>
 
-<!-- HUD Header -->
-<div class="hud-header">
+<!-- ═══ HEADER ═══ -->
+<header class="header" id="header">
   <div>
-    <div class="logo">V2X · RSU</div>
-    <div class="logo-sub">LIVE TRAFFIC COMMAND</div>
+    <div class="logo">V2X · Highway</div>
+    <div class="logo-sub">Real-time Simulator</div>
   </div>
-  <div class="hdr-metrics">
-    <div class="hm"><div class="hm-lbl">FLEET</div><div class="hm-val safe" id="m-fleet">0</div><div class="hm-sub">vehicles</div></div>
-    <div class="hm"><div class="hm-lbl">AVG SPEED</div><div class="hm-val" id="m-speed">0</div><div class="hm-sub">km/h</div></div>
-    <div class="hm"><div class="hm-lbl">RISKS</div><div class="hm-val" id="m-risks">0</div><div class="hm-sub">TTC alerts</div></div>
-    <div class="hm"><div class="hm-lbl">BREAKDOWN</div><div class="hm-val" id="m-breakdown">0</div><div class="hm-sub">shoulder</div></div>
-    <div class="hm"><div class="hm-lbl">MSG/S</div><div class="hm-val" id="m-msgrate">0</div><div class="hm-sub">V2X</div></div>
-    <div class="hm"><div class="hm-lbl">SAFETY</div><div class="hm-val safe" id="m-safety">100</div><div class="hm-sub">/100</div></div>
+  <div class="metrics">
+    <div class="metric"><div class="metric-label">Fleet</div><div class="metric-value safe" id="m-fleet">0</div><div class="metric-unit">active</div></div>
+    <div class="metric"><div class="metric-label">Avg Speed</div><div class="metric-value" id="m-speed">0</div><div class="metric-unit">km/h</div></div>
+    <div class="metric"><div class="metric-label">TTC Risks</div><div class="metric-value" id="m-risks">0</div><div class="metric-unit">alerts</div></div>
+    <div class="metric"><div class="metric-label">Breakdowns</div><div class="metric-value" id="m-bd">0</div><div class="metric-unit">shoulder</div></div>
+    <div class="metric"><div class="metric-label">V2X Rate</div><div class="metric-value" id="m-msg">0</div><div class="metric-unit">msg/s</div></div>
+    <div class="metric"><div class="metric-label">Safety</div><div class="metric-value safe" id="m-safety">100</div><div class="metric-unit">/100</div></div>
   </div>
-  <div class="ws-pill"><div class="dot" id="statusDot"></div><span id="statusText">CONNECTING</span></div>
-</div>
+  <div class="ws-badge"><div class="ws-dot" id="wsDot"></div><span id="wsText">CONNECTING</span></div>
+</header>
 
-<!-- Toolbar -->
-<div class="hud-toolbar">
-  <span class="tb-lbl">SIM</span>
-  <button class="hbtn active" id="btn-pp" onclick="togglePause()">⏸ PAUSE</button>
-  <button class="hbtn red" onclick="resetSim()">↺ RESET</button>
+<!-- ═══ TOOLBAR ═══ -->
+<nav class="toolbar" id="toolbar">
+  <span class="tb-label">Sim</span>
+  <button class="btn active" id="btn-pause" onclick="togglePause()">⏸ Pause</button>
+  <button class="btn red" onclick="resetSim()">↺ Reset</button>
   <div class="tb-sep"></div>
-  <span class="tb-lbl">DENSITY</span>
-  <button class="dbtn" id="d-light" onclick="setDensity('LIGHT')">LIGHT</button>
-  <button class="dbtn active" id="d-medium" onclick="setDensity('MEDIUM')">MED</button>
-  <button class="dbtn" id="d-rush" onclick="setDensity('RUSH')">RUSH</button>
+  <span class="tb-label">Density</span>
+  <button class="density-btn" id="d-light" onclick="setDensity('LIGHT')">Light</button>
+  <button class="density-btn active" id="d-medium" onclick="setDensity('MEDIUM')">Medium</button>
+  <button class="density-btn" id="d-rush" onclick="setDensity('RUSH')">Rush</button>
   <div class="tb-sep"></div>
-  <button class="hbtn scenarios" onclick="openScenarios()">🎬 SCENARIOS</button>
-  <span id="cam-info" style="margin-left:auto;font-family:'Orbitron',sans-serif;font-size:8px;color:var(--muted);letter-spacing:1.5px;"></span>
-</div>
+  <button class="btn scenario" onclick="openScenarios()">🎬 Scenarios</button>
+  <span id="camLabel" style="margin-left:auto;font-family:var(--mono);font-size:9px;color:var(--text-dim);letter-spacing:1px;font-weight:600;"></span>
+</nav>
 
-<!-- Main Scene -->
-<div class="scene">
+<!-- ═══ MAIN ═══ -->
+<div class="main">
 
   <!-- Highway -->
   <div class="highway" id="highway">
-    <canvas id="roadCanvas"></canvas>
-    <div id="tooltip"></div>
-    <div class="cam-overlay" id="camOverlay">CAM · AUTO · 0m</div>
+    <canvas id="canvas"></canvas>
+    <!-- Legend -->
+    <div class="legend">
+      <div class="legend-item"><div class="legend-dot" style="background:#3b82f6"></div>Sedan</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#10b981"></div>SUV</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#f59e0b"></div>Truck</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#ef4444"></div>Ambulance</div>
+      <div class="legend-item"><div class="legend-dot" style="background:rgba(56,189,248,.5);border-radius:50%"></div>V2X Signal</div>
+      <div class="legend-item"><div class="legend-dot" style="background:rgba(248,113,113,.5)"></div>TTC Alert</div>
+    </div>
+    <div class="cam-info" id="camOverlay">CAM · AUTO · 0m</div>
   </div>
 
-  <!-- Side panel -->
-  <div class="side">
-    <div class="side-tabs">
-      <div class="stab active" id="tab-monitor" onclick="switchTab('monitor')">MONITOR</div>
-      <div class="stab" id="tab-alerts" onclick="switchTab('alerts')">ALERTS</div>
-      <div class="stab" id="tab-spawn" onclick="switchTab('spawn')">SPAWN</div>
+  <!-- Side Panel -->
+  <div class="panel">
+    <div class="panel-tabs">
+      <div class="panel-tab active" id="tab-monitor" onclick="switchTab('monitor')">Monitor</div>
+      <div class="panel-tab" id="tab-events" onclick="switchTab('events')">Events</div>
+      <div class="panel-tab" id="tab-spawn" onclick="switchTab('spawn')">Spawn</div>
     </div>
-    <div class="tab-pane active" id="pane-monitor">
-      <div class="empty" id="em-mon"><div class="ei">🛣</div><span>Waiting for vehicles…</span></div>
-      <div id="vehicle-grid" style="display:flex;flex-direction:column;gap:7px;"></div>
+
+    <div class="tab-content active" id="pane-monitor">
+      <div class="empty-state" id="emptyMon"><div class="empty-icon">🛣</div><span>Waiting for vehicles…</span></div>
+      <div id="vehicleGrid" style="display:flex;flex-direction:column;gap:8px;"></div>
     </div>
-    <div class="tab-pane" id="pane-alerts">
-      <div id="ttcAlerts" style="display:flex;flex-direction:column;gap:5px;"></div>
-      <div id="notifPanel" style="display:flex;flex-direction:column;gap:5px;margin-top:4px;"></div>
-      <div class="empty" id="em-alerts"><div class="ei">✅</div><span>No alerts</span></div>
+
+    <div class="tab-content" id="pane-events">
+      <div id="ttcAlerts" style="display:flex;flex-direction:column;gap:6px;"></div>
+      <div id="eventLog" style="display:flex;flex-direction:column;gap:5px;margin-top:4px;"></div>
+      <div class="empty-state" id="emptyEvents"><div class="empty-icon">✅</div><span>No events</span></div>
     </div>
-    <div class="tab-pane" id="pane-spawn">
-      <div class="sform">
-        <label>Type<select id="sp-type"><option value="SEDAN">🚗 Sedan</option><option value="SUV">🚙 SUV</option><option value="TRUCK">🚛 Truck</option><option value="AMBULANCE">🚑 Ambulance</option></select></label>
-        <label>Lane<select id="sp-lane"><option value="0">0 — Fast</option><option value="1" selected>1 — Middle</option><option value="2">2 — Slow</option></select></label>
+
+    <div class="tab-content" id="pane-spawn">
+      <div class="spawn-form">
+        <label>Vehicle Type
+          <select id="sp-type">
+            <option value="SEDAN">🚗 Sedan</option>
+            <option value="SUV">🚙 SUV</option>
+            <option value="TRUCK">🚛 Truck</option>
+            <option value="AMBULANCE">🚑 Ambulance</option>
+          </select>
+        </label>
+        <label>Lane
+          <select id="sp-lane">
+            <option value="0">0 — Fast</option>
+            <option value="1" selected>1 — Middle</option>
+            <option value="2">2 — Slow</option>
+          </select>
+        </label>
         <label>Speed (m/s)<input type="number" id="sp-speed" value="22" min="5" max="50" step="1"></label>
         <label>Initial Wear (%)<input type="number" id="sp-wear" value="10" min="0" max="90" step="5"></label>
         <button class="spawn-btn" onclick="spawnVehicle()">▶ SPAWN VEHICLE</button>
@@ -356,723 +724,980 @@ body{font-family:'Rajdhani',sans-serif;color:var(--text);display:flex;flex-direc
   </div>
 </div>
 
-<!-- Scenarios Modal -->
-<div class="modal-bg" id="scenariosModal" onclick="closeSc(event)">
+<!-- ═══ SCENARIO MODAL ═══ -->
+<div class="modal-overlay" id="scenarioModal" onclick="closeScenarios(event)">
   <div class="modal" onclick="event.stopPropagation()">
-    <button class="mcls" onclick="closeSc()">✕ CLOSE</button>
-    <div class="mtitle">SCENARIO CENTRE</div>
-    <div class="msub">Activate a scenario and watch vehicles respond live on the highway.</div>
+    <button class="modal-close" onclick="closeScenarios()">✕ Close</button>
+    <div class="modal-title">Scenario Centre</div>
+    <div class="modal-sub">Trigger a V2X scenario and watch vehicles respond in real-time on the highway.</div>
 
-    <div class="msect">🔴 EMERGENCY</div>
-    <div class="sgrid">
-      <div class="scrd red" id="sc-emergency_brake"><div class="sc-run-badge">RUNNING</div><div class="sc-icon">🛑</div><div class="sc-name">EMERGENCY BRAKE</div><div class="sc-desc">Lead vehicle brakes hard, chain reaction tests V2V collision-warning.</div><div class="sctag r">COLLISION RISK</div><button class="scbtn" onclick="runSc('emergency_brake','sc-emergency_brake')">▶ ACTIVATE</button></div>
-      <div class="scrd red" id="sc-ambulance"><div class="sc-run-badge">RUNNING</div><div class="sc-icon">🚑</div><div class="sc-name">AMBULANCE RUN</div><div class="sc-desc">High-speed ambulance dispatched. Traffic yields via V2X commands.</div><div class="sctag r">PRIORITY</div><button class="scbtn" onclick="runSc('ambulance','sc-ambulance')">▶ ACTIVATE</button></div>
-      <div class="scrd red" id="sc-overtake"><div class="sc-run-badge">RUNNING</div><div class="sc-icon">🏎</div><div class="sc-name">HIGH-SPEED OVERTAKE</div><div class="sc-desc">Aggressive overtaking in fast lane tests lane-change dynamics.</div><div class="sctag r">HIGH SPEED</div><button class="scbtn" onclick="runSc('overtake','sc-overtake')">▶ ACTIVATE</button></div>
+    <div class="modal-section">🔴 Emergency & Collision</div>
+    <div class="scenario-grid">
+      <div class="scard s-red"><div class="scard-icon">🛑</div><div class="scard-name">Emergency Brake</div><div class="scard-desc">Lead vehicle brakes hard. Chain reaction tests V2V collision warning propagation.</div><div class="scard-tag tag-danger">Collision Risk</div><button class="scard-btn" onclick="runScenario('emergency_brake')">▶ Activate</button></div>
+      <div class="scard s-red"><div class="scard-icon">🚑</div><div class="scard-name">Ambulance Run</div><div class="scard-desc">Emergency vehicle dispatched at high speed. Traffic yields via V2X corridor commands.</div><div class="scard-tag tag-danger">Priority</div><button class="scard-btn" onclick="runScenario('ambulance')">▶ Activate</button></div>
+      <div class="scard s-red"><div class="scard-icon">🏎</div><div class="scard-name">High-Speed Overtake</div><div class="scard-desc">Aggressive fast-lane overtaking tests lane-change safety dynamics.</div><div class="scard-tag tag-danger">High Speed</div><button class="scard-btn" onclick="runScenario('overtake')">▶ Activate</button></div>
     </div>
 
-    <div class="msect">🟠 MAINTENANCE</div>
-    <div class="sgrid">
-      <div class="scrd amber" id="sc-overheat"><div class="sc-run-badge">RUNNING</div><div class="sc-icon">🌡</div><div class="sc-name">ENGINE OVERHEAT</div><div class="sc-desc">Rapid temp rise triggers wear alerts. Vehicle eventually pulls over.</div><div class="sctag a">BREAKDOWN RISK</div><button class="scbtn" onclick="runSc('overheat','sc-overheat')">▶ ACTIVATE</button></div>
-      <div class="scrd amber" id="sc-tyre_failure"><div class="sc-run-badge">RUNNING</div><div class="sc-icon">🔧</div><div class="sc-name">TYRE FAILURE</div><div class="sc-desc">Rapid tyre degradation — vehicle loses control and pulls to shoulder.</div><div class="sctag a">MECHANICAL</div><button class="scbtn" onclick="runSc('tyre_failure','sc-tyre_failure')">▶ ACTIVATE</button></div>
+    <div class="modal-section">🟠 Maintenance & Breakdown</div>
+    <div class="scenario-grid">
+      <div class="scard s-amber"><div class="scard-icon">🌡</div><div class="scard-name">Engine Overheat</div><div class="scard-desc">Rapid temperature rise triggers wear alerts. Vehicle eventually pulls to shoulder.</div><div class="scard-tag tag-amber">Breakdown Risk</div><button class="scard-btn" onclick="runScenario('overheat')">▶ Activate</button></div>
     </div>
 
-    <div class="msect">🟢 TRAFFIC FLOW</div>
-    <div class="sgrid">
-      <div class="scrd blue" id="sc-convoy"><div class="sc-run-badge">RUNNING</div><div class="sc-icon">🚛</div><div class="sc-name">TRUCK CONVOY</div><div class="sc-desc">3-truck platoon in slow lane with V2V-synced tight headway.</div><div class="sctag g">PLATOONING</div><button class="scbtn" onclick="runSc('convoy','sc-convoy')">▶ ACTIVATE</button></div>
-      <div class="scrd blue" id="sc-rush_hour"><div class="sc-run-badge">RUNNING</div><div class="sc-icon">🚦</div><div class="sc-name">RUSH HOUR</div><div class="sc-desc">Max density burst — mixed vehicles injected simultaneously.</div><div class="sctag g">HIGH DENSITY</div><button class="scbtn" onclick="runSc('rush_hour','sc-rush_hour')">▶ ACTIVATE</button></div>
-      <div class="scrd purple" id="sc-multi_breakdown"><div class="sc-run-badge">RUNNING</div><div class="sc-icon">⚠</div><div class="sc-name">MULTI BREAKDOWN</div><div class="sc-desc">Two vehicles break down in adjacent lanes — near-roadblock.</div><div class="sctag p">ROAD HAZARD</div><button class="scbtn" onclick="runSc('multi_breakdown','sc-multi_breakdown')">▶ ACTIVATE</button></div>
+    <div class="modal-section">🟢 Traffic Flow</div>
+    <div class="scenario-grid">
+      <div class="scard s-blue"><div class="scard-icon">🚛</div><div class="scard-name">Truck Convoy</div><div class="scard-desc">3-truck platoon with V2V-synchronised tight headway in slow lane.</div><div class="scard-tag tag-safe">Platooning</div><button class="scard-btn" onclick="runScenario('convoy')">▶ Activate</button></div>
     </div>
   </div>
 </div>
 
 <script>
 // ═══════════════════════════════════════════════════════════════════════
-//  CANVAS-BASED HIGHWAY RENDERER
-//  Perspective road: vehicles at horizon (far) are small, near=large
-//  d=1 → far/top (horizon), d=0 → near/bottom (camera)
+//  V2X HIGHWAY SIMULATOR — FULL CANVAS RENDERER
 // ═══════════════════════════════════════════════════════════════════════
-const cv    = document.getElementById('roadCanvas');
-const ctx   = cv.getContext('2d');
-const hwy   = document.getElementById('highway');
 
-// Road geometry helpers
+const cv = document.getElementById('canvas');
+const c = cv.getContext('2d');
+const hwyEl = document.getElementById('highway');
+
+// ── Road geometry ─────────────────────────────────────────────────────
 const NUM_LANES = 3;
-const VIEW_HALF = 160;  // metres visible each side of camera
+const VIEW_HALF = 180;
 
 let W, H, HY, BY, CLX, CRX, BLX, BRX;
-// HY = horizon Y (top of road), BY = bottom Y
-// CL/CR = centre-left/right at horizon, BL/BR = bottom left/right
 
-function resizeCanvas() {
-  const r = hwy.getBoundingClientRect();
-  W = cv.width  = r.width;
-  H = cv.height = r.height;
-  HY = H * 0.28;  BY = H;
-  const hHW = W * 0.04, bHW = W * 0.46;
-  CLX = W/2 - hHW; CRX = W/2 + hHW;
-  BLX = W/2 - bHW; BRX = W/2 + bHW;
+function resize() {
+  const r = hwyEl.getBoundingClientRect();
+  W = cv.width = r.width * devicePixelRatio;
+  H = cv.height = r.height * devicePixelRatio;
+  cv.style.width = r.width + 'px';
+  cv.style.height = r.height + 'px';
+  c.setTransform(devicePixelRatio, 0, 0, devicePixelRatio, 0, 0);
+  const w = r.width, h = r.height;
+  HY = h * 0.25;
+  BY = h;
+  const hHW = w * 0.04, bHW = w * 0.46;
+  CLX = w/2 - hHW; CRX = w/2 + hHW;
+  BLX = w/2 - bHW; BRX = w/2 + bHW;
 }
+window.addEventListener('resize', resize);
 
-function yAt(d)    { return BY - d*(BY-HY); }
-function lxAt(d)   { return W/2 - ((W/2-BLX) - d*((W/2-BLX)-(W/2-CLX))); }
-function rxAt(d)   { return W/2 + ((BRX-W/2) - d*((BRX-W/2)-(CRX-W/2))); }
+// Perspective helpers
+function yAt(d) { return BY - d * (BY - HY); }
+function lxAt(d) { return W / (2*devicePixelRatio) - ((W/(2*devicePixelRatio) - BLX) - d * ((W/(2*devicePixelRatio) - BLX) - (W/(2*devicePixelRatio) - CLX))); }
+function rxAt(d) { return W / (2*devicePixelRatio) + ((BRX - W/(2*devicePixelRatio)) - d * ((BRX - W/(2*devicePixelRatio)) - (CRX - W/(2*devicePixelRatio)))); }
 function laneXAt(d, lane) {
-  if (lane >= 3) return rxAt(d) + (rxAt(d)-lxAt(d))*0.28;
-  return lxAt(d) + (lane+0.5)/NUM_LANES*(rxAt(d)-lxAt(d));
+  if (lane >= 3) return rxAt(d) + (rxAt(d) - lxAt(d)) * 0.28;
+  return lxAt(d) + (lane + 0.5) / NUM_LANES * (rxAt(d) - lxAt(d));
 }
-function scaleAt(d) { return 0.18 + (1-d)*0.82; }  // near=1.0, far=0.18
+function scaleAt(d) { return 0.20 + (1 - d) * 0.80; }
 
-// Lane dash animation offset
-let dashOffset = 0;
-
-// ── DRAW ROAD ──────────────────────────────────────────────────────────
-function drawRoad() {
-  ctx.clearRect(0,0,W,H);
-
-  // Sky gradient
-  const sky = ctx.createLinearGradient(0,0,0,HY);
-  sky.addColorStop(0,'#020408');
-  sky.addColorStop(1,'#05101a');
-  ctx.fillStyle = sky;
-  ctx.fillRect(0,0,W,HY);
-
-  // Horizon glow
-  const hglow = ctx.createRadialGradient(W/2,HY,0, W/2,HY,W*0.5);
-  hglow.addColorStop(0,'rgba(0,150,220,.12)');
-  hglow.addColorStop(1,'rgba(0,0,0,0)');
-  ctx.fillStyle = hglow;
-  ctx.fillRect(0,0,W,HY*1.5);
-
-  // Road surface gradient (near=slightly lighter)
-  const roadGrad = ctx.createLinearGradient(0,HY,0,BY);
-  roadGrad.addColorStop(0,'#090e14');
-  roadGrad.addColorStop(0.4,'#0b1219');
-  roadGrad.addColorStop(1,'#0f1820');
-  ctx.fillStyle = roadGrad;
-  ctx.beginPath();
-  ctx.moveTo(BLX,BY); ctx.lineTo(CLX,HY);
-  ctx.lineTo(CRX,HY); ctx.lineTo(BRX,BY);
-  ctx.closePath(); ctx.fill();
-
-  // Road edges (bright)
-  ctx.strokeStyle='rgba(0,180,255,.4)'; ctx.lineWidth=1.5;
-  ctx.beginPath(); ctx.moveTo(BLX,BY); ctx.lineTo(CLX,HY); ctx.stroke();
-  ctx.beginPath(); ctx.moveTo(BRX,BY); ctx.lineTo(CRX,HY); ctx.stroke();
-
-  // Shoulder
-  const sw0=(BRX-BLX)*0.3, sw1=(CRX-CLX)*0.3;
-  ctx.fillStyle='rgba(5,9,12,.8)';
-  ctx.beginPath();
-  ctx.moveTo(BRX,BY); ctx.lineTo(BRX+sw0,BY);
-  ctx.lineTo(CRX+sw1,HY); ctx.lineTo(CRX,HY);
-  ctx.closePath(); ctx.fill();
-  ctx.strokeStyle='rgba(255,180,0,.3)'; ctx.lineWidth=1;
-  ctx.beginPath(); ctx.moveTo(BRX,BY); ctx.lineTo(CRX,HY); ctx.stroke();
-
-  // Animated lane dashes
-  dashOffset = (dashOffset + 1.4) % 60;
-  for (let lane=1; lane<NUM_LANES; lane++) {
-    for (let seg=0; seg<=20; seg++) {
-      const t0 = (seg*60 + dashOffset)/(20*60+60);
-      const t1 = Math.min(1,(seg*60+28+dashOffset)/(20*60+60));
-      if (t0>1 || t1<0) continue;
-      const d0=Math.max(0,Math.min(1,t0)), d1=Math.max(0,Math.min(1,t1));
-      const x0=lxAt(d0)+lane/NUM_LANES*(rxAt(d0)-lxAt(d0));
-      const x1=lxAt(d1)+lane/NUM_LANES*(rxAt(d1)-lxAt(d1));
-      const y0=yAt(d0), y1=yAt(d1);
-      const opacity = 0.2 + d0*0.5;
-      const w0 = 0.8 + (1-d0)*1.2;
-      ctx.strokeStyle=`rgba(0,180,255,${opacity})`;
-      ctx.lineWidth=w0;
-      ctx.beginPath(); ctx.moveTo(x0,y0); ctx.lineTo(x1,y1); ctx.stroke();
-    }
-  }
-
-  // Horizon glow line
-  ctx.strokeStyle='rgba(0,210,255,.35)'; ctx.lineWidth=1.2;
-  ctx.beginPath(); ctx.moveTo(CLX,HY); ctx.lineTo(CRX,HY); ctx.stroke();
-}
-
-// ═══════════════════════════════════════════════════════════════════════
-//  REAL CAR SVGs — top-down view, highly detailed
-// ═══════════════════════════════════════════════════════════════════════
-function carSVG(type) {
-  type = (type||'SEDAN').toUpperCase();
-
-  if (type==='AMBULANCE') return `
-<svg class="car-icon" width="20" height="46" viewBox="0 0 20 46" style="overflow:visible;display:block">
-  <defs>
-    <linearGradient id="ambg" x1="0" y1="0" x2="1" y2="0">
-      <stop offset="0%" stop-color="#e8e8e8"/><stop offset="50%" stop-color="#ffffff"/><stop offset="100%" stop-color="#e0e0e0"/>
-    </linearGradient>
-  </defs>
-  <!-- body -->
-  <rect x="2.5" y="2" width="15" height="42" rx="5" fill="url(#ambg)" stroke="#c0c0c0" stroke-width=".4"/>
-  <!-- hood -->
-  <path d="M4,2 Q10,1 16,2 L16,9 Q10,7.5 4,9Z" fill="#f0f0f0"/>
-  <!-- windshield -->
-  <rect x="3.8" y="4" width="12.4" height="10" rx="2" fill="rgba(140,220,255,.6)" stroke="rgba(0,0,0,.15)" stroke-width=".3"/>
-  <!-- light bar on roof -->
-  <rect x="6" y="5.5" width="2.5" height="2" rx="1" fill="#3b82f6" opacity=".95"/>
-  <rect x="11.5" y="5.5" width="2.5" height="2" rx="1" fill="#ef4444" opacity=".95"/>
-  <!-- red stripe -->
-  <rect x="2.5" y="14" width="15" height="4" fill="#dc2626" opacity=".9"/>
-  <!-- red cross -->
-  <rect x="9.25" y="22" width="1.5" height="8" rx=".75" fill="#dc2626"/>
-  <rect x="6.5" y="24.75" width="7" height="2.5" rx="1.25" fill="#dc2626"/>
-  <!-- side windows -->
-  <rect x="2.8" y="17" width="2.5" height="9" rx="1.2" fill="rgba(140,220,255,.45)" stroke="rgba(0,0,0,.1)" stroke-width=".3"/>
-  <rect x="14.7" y="17" width="2.5" height="9" rx="1.2" fill="rgba(140,220,255,.45)" stroke="rgba(0,0,0,.1)" stroke-width=".3"/>
-  <!-- rear window -->
-  <rect x="3.8" y="33" width="12.4" height="8.5" rx="2" fill="rgba(140,220,255,.45)" stroke="rgba(0,0,0,.1)" stroke-width=".3"/>
-  <!-- headlights -->
-  <rect x="3" y="2.5" width="4" height="2" rx=".8" fill="#fffde0" opacity=".95"/>
-  <rect x="13" y="2.5" width="4" height="2" rx=".8" fill="#fffde0" opacity=".95"/>
-  <!-- taillights -->
-  <rect x="3" y="41.5" width="4" height="2.5" rx=".8" class="tl" fill="#7f1d1d"/>
-  <rect x="13" y="41.5" width="4" height="2.5" rx=".8" class="tl" fill="#7f1d1d"/>
-  <!-- side mirrors -->
-  <rect x="0.5" y="10" width="2" height="3" rx=".8" fill="#d0d0d0" stroke="#b0b0b0" stroke-width=".3"/>
-  <rect x="17.5" y="10" width="2" height="3" rx=".8" fill="#d0d0d0" stroke="#b0b0b0" stroke-width=".3"/>
-  <!-- wheels -->
-  <rect x=".3" y="8" width="3" height="7" rx="1.5" fill="#1a1a2e"/>
-  <rect x="16.7" y="8" width="3" height="7" rx="1.5" fill="#1a1a2e"/>
-  <rect x=".3" y="31" width="3" height="7" rx="1.5" fill="#1a1a2e"/>
-  <rect x="16.7" y="31" width="3" height="7" rx="1.5" fill="#1a1a2e"/>
-  <!-- wheel rims -->
-  <rect x="1.2" y="9.5" width="1.5" height="4" rx=".75" fill="#2a2a4e" opacity=".7"/>
-  <rect x="17.3" y="9.5" width="1.5" height="4" rx=".75" fill="#2a2a4e" opacity=".7"/>
-  <rect x="1.2" y="32.5" width="1.5" height="4" rx=".75" fill="#2a2a4e" opacity=".7"/>
-  <rect x="17.3" y="32.5" width="1.5" height="4" rx=".75" fill="#2a2a4e" opacity=".7"/>
-</svg>`;
-
-  if (type==='TRUCK') return `
-<svg class="car-icon" width="22" height="60" viewBox="0 0 22 60" style="overflow:visible;display:block">
-  <defs>
-    <linearGradient id="trkg" x1="0" y1="0" x2="1" y2="0">
-      <stop offset="0%" stop-color="#c97e04"/><stop offset="50%" stop-color="#f59e0b"/><stop offset="100%" stop-color="#c97e04"/>
-    </linearGradient>
-    <linearGradient id="trlg" x1="0" y1="0" x2="1" y2="0">
-      <stop offset="0%" stop-color="#b36904"/><stop offset="50%" stop-color="#d97706"/><stop offset="100%" stop-color="#b36904"/>
-    </linearGradient>
-  </defs>
-  <!-- trailer body -->
-  <rect x="2" y="20" width="18" height="38" rx="2" fill="url(#trlg)" stroke="#92400e" stroke-width=".5"/>
-  <!-- trailer ribs -->
-  <line x1="2" y1="27" x2="20" y2="27" stroke="#92400e" stroke-width=".6" opacity=".6"/>
-  <line x1="2" y1="34" x2="20" y2="34" stroke="#92400e" stroke-width=".6" opacity=".6"/>
-  <line x1="2" y1="41" x2="20" y2="41" stroke="#92400e" stroke-width=".6" opacity=".6"/>
-  <line x1="2" y1="48" x2="20" y2="48" stroke="#92400e" stroke-width=".6" opacity=".6"/>
-  <!-- cab body -->
-  <rect x="2" y="2" width="18" height="20" rx="4" fill="url(#trkg)" stroke="#92400e" stroke-width=".5"/>
-  <!-- windshield -->
-  <rect x="3.5" y="4" width="15" height="9" rx="2.5" fill="rgba(140,220,255,.55)" stroke="rgba(0,0,0,.12)" stroke-width=".3"/>
-  <!-- cab interior shade -->
-  <rect x="4" y="13" width="14" height="6" rx="1" fill="rgba(0,0,0,.2)"/>
-  <!-- headlights (wide trucks) -->
-  <rect x="2" y="3" width="5" height="2.5" rx=".8" fill="#fffde0"/>
-  <rect x="15" y="3" width="5" height="2.5" rx=".8" fill="#fffde0"/>
-  <!-- taillights -->
-  <rect x="2" y="55" width="5" height="3" rx=".8" class="tl" fill="#7f1d1d"/>
-  <rect x="15" y="55" width="5" height="3" rx=".8" class="tl" fill="#7f1d1d"/>
-  <!-- mirrors (big truck) -->
-  <rect x="-.5" y="6" width="2.5" height="4" rx="1" fill="#c97e04" stroke="#92400e" stroke-width=".3"/>
-  <rect x="20" y="6" width="2.5" height="4" rx="1" fill="#c97e04" stroke="#92400e" stroke-width=".3"/>
-  <!-- cab wheels -->
-  <rect x="-.5" y="7" width="3" height="7.5" rx="1.5" fill="#1a1a2e"/>
-  <rect x="19.5" y="7" width="3" height="7.5" rx="1.5" fill="#1a1a2e"/>
-  <!-- drive axle wheels (double) -->
-  <rect x="-.5" y="34" width="3" height="7" rx="1.5" fill="#1a1a2e"/>
-  <rect x="19.5" y="34" width="3" height="7" rx="1.5" fill="#1a1a2e"/>
-  <rect x="-.5" y="43" width="3" height="7" rx="1.5" fill="#1a1a2e"/>
-  <rect x="19.5" y="43" width="3" height="7" rx="1.5" fill="#1a1a2e"/>
-  <!-- rim highlights -->
-  <rect x=".4" y="8.5" width="1.5" height="4.5" rx=".75" fill="#2a2a4e" opacity=".7"/>
-  <rect x="20.1" y="8.5" width="1.5" height="4.5" rx=".75" fill="#2a2a4e" opacity=".7"/>
-</svg>`;
-
-  if (type==='SUV') return `
-<svg class="car-icon" width="19" height="44" viewBox="0 0 19 44" style="overflow:visible;display:block">
-  <defs>
-    <linearGradient id="suvg" x1="0" y1="0" x2="1" y2="0">
-      <stop offset="0%" stop-color="#047857"/><stop offset="40%" stop-color="#059669"/><stop offset="100%" stop-color="#047857"/>
-    </linearGradient>
-  </defs>
-  <!-- body (boxy) -->
-  <rect x="2" y="2" width="15" height="40" rx="4.5" fill="url(#suvg)" stroke="#064e3b" stroke-width=".4"/>
-  <!-- hood -->
-  <path d="M3.5,2 Q9.5,1 15.5,2 L15.5,8 Q9.5,6.5 3.5,8Z" fill="#059669"/>
-  <!-- windshield (tall) -->
-  <rect x="3.5" y="4.5" width="12" height="12" rx="2" fill="rgba(140,220,255,.55)" stroke="rgba(0,0,0,.12)" stroke-width=".3"/>
-  <!-- roof rack -->
-  <rect x="5" y="5.5" width="9" height="1.2" rx=".6" fill="rgba(0,0,0,.4)"/>
-  <rect x="5" y="9" width="9" height="1.2" rx=".6" fill="rgba(0,0,0,.4)"/>
-  <line x1="5.5" y1="5.5" x2="5.5" y2="10.7" stroke="rgba(0,0,0,.35)" stroke-width=".8"/>
-  <line x1="13.5" y1="5.5" x2="13.5" y2="10.7" stroke="rgba(0,0,0,.35)" stroke-width=".8"/>
-  <!-- cabin shade -->
-  <rect x="4" y="16" width="11" height="14" rx="1.5" fill="rgba(0,0,0,.15)"/>
-  <!-- side windows (tall) -->
-  <rect x="2.3" y="17" width="2" height="11" rx="1" fill="rgba(140,220,255,.4)" stroke="rgba(0,0,0,.1)" stroke-width=".3"/>
-  <rect x="14.7" y="17" width="2" height="11" rx="1" fill="rgba(140,220,255,.4)" stroke="rgba(0,0,0,.1)" stroke-width=".3"/>
-  <!-- rear window -->
-  <rect x="3.5" y="31" width="12" height="9" rx="2" fill="rgba(140,220,255,.4)" stroke="rgba(0,0,0,.1)" stroke-width=".3"/>
-  <!-- headlights (wide) -->
-  <rect x="2.5" y="2.5" width="5" height="2.2" rx=".8" fill="#fffde0"/>
-  <rect x="11.5" y="2.5" width="5" height="2.2" rx=".8" fill="#fffde0"/>
-  <!-- taillights -->
-  <rect x="2.5" y="39.5" width="5" height="2.5" rx=".8" class="tl" fill="#7f1d1d"/>
-  <rect x="11.5" y="39.5" width="5" height="2.5" rx=".8" class="tl" fill="#7f1d1d"/>
-  <!-- side mirrors -->
-  <rect x="0.5" y="11" width="1.8" height="3" rx=".8" fill="#047857" stroke="#064e3b" stroke-width=".3"/>
-  <rect x="16.7" y="11" width="1.8" height="3" rx=".8" fill="#047857" stroke="#064e3b" stroke-width=".3"/>
-  <!-- wheels (large) -->
-  <rect x=".3" y="9" width="3.2" height="8" rx="1.6" fill="#1a1a2e"/>
-  <rect x="15.5" y="9" width="3.2" height="8" rx="1.6" fill="#1a1a2e"/>
-  <rect x=".3" y="28" width="3.2" height="8" rx="1.6" fill="#1a1a2e"/>
-  <rect x="15.5" y="28" width="3.2" height="8" rx="1.6" fill="#1a1a2e"/>
-  <!-- rims -->
-  <rect x="1.2" y="10.5" width="1.5" height="5" rx=".75" fill="#2a3a4e" opacity=".7"/>
-  <rect x="16.3" y="10.5" width="1.5" height="5" rx=".75" fill="#2a3a4e" opacity=".7"/>
-  <rect x="1.2" y="29.5" width="1.5" height="5" rx=".75" fill="#2a3a4e" opacity=".7"/>
-  <rect x="16.3" y="29.5" width="1.5" height="5" rx=".75" fill="#2a3a4e" opacity=".7"/>
-</svg>`;
-
-  // ── SEDAN (detailed, the showcase car) ─────────────────────────────
-  return `
-<svg class="car-icon" width="17" height="42" viewBox="0 0 17 42" style="overflow:visible;display:block">
-  <defs>
-    <linearGradient id="sdag" x1="0" y1="0" x2="1" y2="0">
-      <stop offset="0%" stop-color="#1d4ed8"/><stop offset="45%" stop-color="#2563eb"/><stop offset="100%" stop-color="#1d4ed8"/>
-    </linearGradient>
-    <linearGradient id="sdsh" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0%" stop-color="rgba(255,255,255,.18)"/><stop offset="100%" stop-color="rgba(0,0,0,0)"/>
-    </linearGradient>
-  </defs>
-  <!-- Main body — tapered front/rear, wider cabin -->
-  <path d="M8.5,1.5 Q14,3 14.5,7 L14.5,10 Q15.5,12 15.5,16 L15.5,28 Q15.5,32 14.5,34 L14,38.5 Q8.5,40.5 3,38.5 L2.5,34 Q1.5,32 1.5,28 L1.5,16 Q1.5,12 2.5,10 L2.5,7 Q3,3 8.5,1.5Z"
-        fill="url(#sdag)" stroke="#1a3fbf" stroke-width=".4"/>
-  <!-- gloss highlight on roof -->
-  <path d="M4,14 Q8.5,12.5 13,14 L13,22 Q8.5,21 4,22Z" fill="url(#sdsh)" opacity=".7"/>
-  <!-- hood (front section) -->
-  <path d="M3.5,3 Q8.5,1.8 13.5,3 L14,9.5 Q8.5,8 3,9.5Z" fill="#1e50d0"/>
-  <!-- windshield -->
-  <rect x="3.2" y="5" width="10.6" height="10" rx="2" fill="rgba(140,220,255,.55)" stroke="rgba(255,255,255,.2)" stroke-width=".3"/>
-  <!-- A-pillar shading -->
-  <path d="M3.2,5 L4.5,15 L3.2,15Z" fill="rgba(0,0,0,.25)"/>
-  <path d="M13.8,5 L12.5,15 L13.8,15Z" fill="rgba(0,0,0,.25)"/>
-  <!-- roof / cabin shade -->
-  <rect x="3.5" y="15" width="10" height="13" rx="1" fill="rgba(0,0,0,.18)"/>
-  <!-- side windows (front door) -->
-  <rect x="1.8" y="16" width="2.2" height="7" rx="1" fill="rgba(140,220,255,.4)" stroke="rgba(255,255,255,.12)" stroke-width=".3"/>
-  <rect x="13" y="16" width="2.2" height="7" rx="1" fill="rgba(140,220,255,.4)" stroke="rgba(255,255,255,.12)" stroke-width=".3"/>
-  <!-- side windows (rear door) -->
-  <rect x="1.8" y="24" width="2.2" height="5.5" rx="1" fill="rgba(140,220,255,.35)" stroke="rgba(255,255,255,.12)" stroke-width=".3"/>
-  <rect x="13" y="24" width="2.2" height="5.5" rx="1" fill="rgba(140,220,255,.35)" stroke="rgba(255,255,255,.12)" stroke-width=".3"/>
-  <!-- door seam lines -->
-  <line x1="3.8" y1="15.5" x2="3.8" y2="32" stroke="rgba(0,0,0,.3)" stroke-width=".4"/>
-  <line x1="13.2" y1="15.5" x2="13.2" y2="32" stroke="rgba(0,0,0,.3)" stroke-width=".4"/>
-  <!-- door split -->
-  <line x1="1.8" y1="23.2" x2="4" y2="23.2" stroke="rgba(0,0,0,.25)" stroke-width=".4"/>
-  <line x1="13" y1="23.2" x2="15.2" y2="23.2" stroke="rgba(0,0,0,.25)" stroke-width=".4"/>
-  <!-- rear window (smaller, C-pillar) -->
-  <rect x="3.2" y="30" width="10.6" height="7.5" rx="2" fill="rgba(140,220,255,.4)" stroke="rgba(255,255,255,.12)" stroke-width=".3"/>
-  <!-- trunk lid -->
-  <path d="M3.5,37.5 Q8.5,39.5 13.5,37.5 L14,40 Q8.5,41.5 3,40Z" fill="#1a3fbf"/>
-  <!-- headlights (DRL style) -->
-  <rect x="3" y="3.2" width="3.5" height="1.5" rx=".6" fill="#fffde0" opacity=".95"/>
-  <rect x="10.5" y="3.2" width="3.5" height="1.5" rx=".6" fill="#fffde0" opacity=".95"/>
-  <!-- DRL strip -->
-  <line x1="3.2" y1="5" x2="6.5" y2="5" stroke="rgba(255,253,200,.5)" stroke-width=".6"/>
-  <line x1="10.5" y1="5" x2="13.8" y2="5" stroke="rgba(255,253,200,.5)" stroke-width=".6"/>
-  <!-- taillights -->
-  <rect x="3" y="38.8" width="3.5" height="2" rx=".6" class="tl" fill="#7f1d1d"/>
-  <rect x="10.5" y="38.8" width="3.5" height="2" rx=".6" class="tl" fill="#7f1d1d"/>
-  <!-- tail light glow strip -->
-  <line x1="3.2" y1="38.8" x2="6.5" y2="38.8" stroke="rgba(127,29,29,.6)" stroke-width=".5"/>
-  <line x1="10.5" y1="38.8" x2="13.8" y2="38.8" stroke="rgba(127,29,29,.6)" stroke-width=".5"/>
-  <!-- side mirrors (detailed) -->
-  <path d="M0.8,11.5 L2,11 L2,14.5 L0.8,14Z" fill="#1d4ed8" stroke="#1a3fbf" stroke-width=".3"/>
-  <path d="M15,11 L16.2,11.5 L16.2,14 L15,14.5Z" fill="#1d4ed8" stroke="#1a3fbf" stroke-width=".3"/>
-  <!-- wheels (4, rounded rect) -->
-  <rect x=".2" y="9" width="3.2" height="7" rx="1.6" fill="#111"/>
-  <rect x="13.6" y="9" width="3.2" height="7" rx="1.6" fill="#111"/>
-  <rect x=".2" y="27" width="3.2" height="7" rx="1.6" fill="#111"/>
-  <rect x="13.6" y="27" width="3.2" height="7" rx="1.6" fill="#111"/>
-  <!-- rim (spoke detail) -->
-  <circle cx="1.8" cy="12.5" r="1" fill="none" stroke="#334" stroke-width=".5"/>
-  <circle cx="15.2" cy="12.5" r="1" fill="none" stroke="#334" stroke-width=".5"/>
-  <circle cx="1.8" cy="30.5" r="1" fill="none" stroke="#334" stroke-width=".5"/>
-  <circle cx="15.2" cy="30.5" r="1" fill="none" stroke="#334" stroke-width=".5"/>
-</svg>`;
-}
-
-// ═══════════════════════════════════════════════════════════════════════
-//  STATE
-// ═══════════════════════════════════════════════════════════════════════
-const vehicles = {}, interpPos = {}, laneInterp = {}, notifications = [];
+// ── State ─────────────────────────────────────────────────────────────
+const vehicles = {};
+const interpPos = {};
+const laneInterp = {};
+const events = [];
 let alerts = [], maintenance = {}, alertIds = new Set();
 let selectedId = null, isPaused = false;
 let msgCount = 0, lastMsgMs = Date.now(), msgRate = 0;
 let smoothCam = null;
-const CAM_EMA  = 0.025;
+const CAM_EMA = 0.025;
 const STALE_MS = 4500;
 
-const LANE_NAMES = ['FAST','MIDDLE','SLOW','SHOULDER'];
-const WEAR_KEYS = [
-  {key:'engineWearPct',label:'Engine'},{key:'brakeWearPct',label:'Brakes'},
-  {key:'tyreWearPct',label:'Tyres'},{key:'radiatorWearPct',label:'Radiator'},
-  {key:'acWearPct',label:'A/C'},{key:'timingBeltWearPct',label:'Belt'}
-];
-const TYPE_ICONS = {SEDAN:'🚗',SUV:'🚙',TRUCK:'🚛',AMBULANCE:'🚑'};
+// V2X ring particles
+const v2xRings = [];
+// TTC flash particles
+const ttcFlashes = [];
 
-// ── Interpolation ──────────────────────────────────────────────────────
+const LANE_NAMES = ['FAST', 'MIDDLE', 'SLOW', 'SHOULDER'];
+const WEAR_KEYS = [
+  { key: 'engineWearPct', label: 'Engine' }, { key: 'brakeWearPct', label: 'Brakes' },
+  { key: 'tyreWearPct', label: 'Tyres' }, { key: 'radiatorWearPct', label: 'Radiator' },
+  { key: 'acWearPct', label: 'A/C' }, { key: 'timingBeltWearPct', label: 'Belt' }
+];
+const TYPE_ICONS = { SEDAN: '🚗', SUV: '🚙', TRUCK: '🚛', AMBULANCE: '🚑' };
+const TYPE_COLORS = { SEDAN: '#3b82f6', SUV: '#10b981', TRUCK: '#f59e0b', AMBULANCE: '#ef4444' };
+
+let dashOffset = 0;
+let frameTime = 0;
+let hoveredId = null;
+
+// ── Interpolation ─────────────────────────────────────────────────────
 function iX(id) {
   const s = interpPos[id];
   if (!s) return vehicles[id]?.x ?? 0;
-  return s.serverX + s.speedMps * Math.min((Date.now()-s.updateMs)/1000, 1.5);
+  return s.serverX + s.speedMps * Math.min((Date.now() - s.updateMs) / 1000, 1.5);
 }
 function laneF(id, target) {
-  if (!laneInterp[id]) laneInterp[id] = {cur:target};
+  if (!laneInterp[id]) laneInterp[id] = { cur: target };
   const s = laneInterp[id];
-  s.cur += (target - s.cur) * 0.06;
-  if (Math.abs(target-s.cur) < 0.005) s.cur = target;
+  s.cur += (target - s.cur) * 0.07;
+  if (Math.abs(target - s.cur) < 0.005) s.cur = target;
   return s.cur;
 }
 
-// ── Camera ─────────────────────────────────────────────────────────────
 function updateCam() {
   const ids = Object.keys(vehicles);
   if (!ids.length) return;
-  const xs = ids.filter(id=>vehicles[id].lane!==3).map(iX);
+  const xs = ids.filter(id => vehicles[id].lane !== 3).map(iX);
   const ref = xs.length ? xs : ids.map(iX);
-  const target = ref.reduce((a,b)=>a+b,0)/ref.length;
+  const target = ref.reduce((a, b) => a + b, 0) / ref.length;
   if (smoothCam === null) { smoothCam = target; return; }
   smoothCam += (target - smoothCam) * CAM_EMA;
 }
 
-// ── Vehicle marker DOM management ──────────────────────────────────────
-const hwyEl = document.getElementById('highway');
+// ═══════════════════════════════════════════════════════════════════════
+//  DRAWING FUNCTIONS
+// ═══════════════════════════════════════════════════════════════════════
 
-function createMarker(id, v) {
-  const el = document.createElement('div');
-  el.id = 'mk-'+id; el.className = 'vehicle'; el.style.opacity = '0';
-  el.innerHTML = `<div class="vtag">${id}</div>
-    <div class="car-wrap">
-      <div class="signal-l" id="sl-${id}" style="display:none"></div>
-      ${carSVG(v.vehicleType)}
-      <div class="signal-r" id="sr-${id}" style="display:none"></div>
-    </div>`;
-  el.addEventListener('click', ()=>{selectedId=selectedId===id?null:id;});
-  el.addEventListener('mouseenter', ()=>showTip(id,el));
-  el.addEventListener('mouseleave', hideTip);
-  hwyEl.appendChild(el);
-  requestAnimationFrame(()=>{el.style.transition='opacity .5s';el.style.opacity='1';});
-  return el;
+function drawSky() {
+  const sky = c.createLinearGradient(0, 0, 0, HY);
+  sky.addColorStop(0, '#010306');
+  sky.addColorStop(1, '#040810');
+  c.fillStyle = sky;
+  c.fillRect(0, 0, W / devicePixelRatio, HY);
+
+  // Horizon glow
+  const gw = W / (2 * devicePixelRatio);
+  const hg = c.createRadialGradient(gw, HY, 0, gw, HY, gw * 1.2);
+  hg.addColorStop(0, 'rgba(14,165,233,.10)');
+  hg.addColorStop(0.5, 'rgba(14,165,233,.04)');
+  hg.addColorStop(1, 'rgba(0,0,0,0)');
+  c.fillStyle = hg;
+  c.fillRect(0, 0, W / devicePixelRatio, HY * 1.6);
 }
 
-function renderMarkers() {
-  if (smoothCam===null) return;
-  const viewMin = smoothCam - VIEW_HALF, range = VIEW_HALF*2;
+function drawRoad() {
+  // Road surface
+  const rg = c.createLinearGradient(0, HY, 0, BY);
+  rg.addColorStop(0, '#080d13');
+  rg.addColorStop(0.3, '#0a1118');
+  rg.addColorStop(1, '#0e151e');
+  c.fillStyle = rg;
+  c.beginPath();
+  c.moveTo(BLX, BY); c.lineTo(CLX, HY);
+  c.lineTo(CRX, HY); c.lineTo(BRX, BY);
+  c.closePath(); c.fill();
 
-  Object.keys(vehicles).forEach(id=>{
-    const v  = vehicles[id];
-    const ix = iX(id);
-    const dRaw = (ix - viewMin) / range;
+  // Road edge lines
+  c.strokeStyle = 'rgba(56,189,248,.30)'; c.lineWidth = 1.5;
+  c.beginPath(); c.moveTo(BLX, BY); c.lineTo(CLX, HY); c.stroke();
+  c.beginPath(); c.moveTo(BRX, BY); c.lineTo(CRX, HY); c.stroke();
 
-    let el = document.getElementById('mk-'+id);
-    if (!el) el = createMarker(id, v);
+  // Shoulder
+  const sw0 = (BRX - BLX) * 0.28, sw1 = (CRX - CLX) * 0.28;
+  c.fillStyle = 'rgba(4,7,10,.85)';
+  c.beginPath();
+  c.moveTo(BRX, BY); c.lineTo(BRX + sw0, BY);
+  c.lineTo(CRX + sw1, HY); c.lineTo(CRX, HY);
+  c.closePath(); c.fill();
+  c.strokeStyle = 'rgba(251,191,36,.25)'; c.lineWidth = 1;
+  c.beginPath(); c.moveTo(BRX, BY); c.lineTo(CRX, HY); c.stroke();
 
-    if (dRaw < -0.12 || dRaw > 1.12) { el.style.display='none'; return; }
-    el.style.display = '';
+  // Animated lane dashes
+  dashOffset = (dashOffset + 1.2) % 60;
+  for (let lane = 1; lane < NUM_LANES; lane++) {
+    for (let seg = 0; seg <= 22; seg++) {
+      const t0 = (seg * 60 + dashOffset) / (22 * 60 + 60);
+      const t1 = Math.min(1, (seg * 60 + 28 + dashOffset) / (22 * 60 + 60));
+      if (t0 > 1 || t1 < 0) continue;
+      const d0 = Math.max(0, Math.min(1, t0));
+      const d1 = Math.max(0, Math.min(1, t1));
+      const x0 = lxAt(d0) + lane / NUM_LANES * (rxAt(d0) - lxAt(d0));
+      const x1 = lxAt(d1) + lane / NUM_LANES * (rxAt(d1) - lxAt(d1));
+      const y0 = yAt(d0), y1 = yAt(d1);
+      const opacity = 0.15 + d0 * 0.45;
+      c.strokeStyle = `rgba(56,189,248,${opacity})`;
+      c.lineWidth = 0.8 + (1 - d0) * 1.2;
+      c.beginPath(); c.moveTo(x0, y0); c.lineTo(x1, y1); c.stroke();
+    }
+  }
 
-    const d  = Math.min(1, Math.max(0, dRaw));
-    const lf = laneF(id, v.lane);
-    const px = laneXAt(d, lf);
-    const py = yAt(d);
-    const sc = scaleAt(d);
-
-    el.style.left = px+'px';
-    el.style.top  = py+'px';
-    el.style.zIndex = Math.round((1-d)*1000)+1;
-
-    const icon = el.querySelector('.car-icon');
-    if (icon) icon.style.transform = `scale(${sc.toFixed(3)})`;
-
-    // Brake lights
-    const braking = v.brakeLights===true;
-    el.querySelectorAll('.tl').forEach(t=>
-      t.setAttribute('fill', braking?'#ff1111':v.vehicleType==='AMBULANCE'?'#991b1b':'#7f1d1d')
-    );
-
-    // Signals
-    const sl=document.getElementById('sl-'+id), sr=document.getElementById('sr-'+id);
-    if(sl) sl.style.display=(v.turnSignal==='LEFT'||v.turnSignal==='HAZARD')?'block':'none';
-    if(sr) sr.style.display=(v.turnSignal==='RIGHT'||v.turnSignal==='HAZARD')?'block':'none';
-
-    // Speed lines (for fast vehicles near bottom)
-    if (d < 0.3 && v.speedMps > 28 && Math.random() < 0.05) spawnSpeedline(px, py, sc);
-
-    // CSS class
-    let cls = 'vehicle';
-    if      (v.vehicleType==='AMBULANCE')          cls += ' vt-ambulance';
-    else if (v.status==='BREAKDOWN')               cls += ' vt-breakdown';
-    else if (v.emergency || alertIds.has(id))      cls += ' vt-emergency';
-    if (id===selectedId) cls += ' selected';
-    if (el.className !== cls) el.className = cls;
-  });
-
-  // Remove gone vehicles
-  document.querySelectorAll('[id^="mk-"]').forEach(el=>{
-    if (!vehicles[el.id.slice(3)]) el.remove();
-  });
+  // Horizon line
+  c.strokeStyle = 'rgba(56,189,248,.25)'; c.lineWidth = 1;
+  c.beginPath(); c.moveTo(CLX, HY); c.lineTo(CRX, HY); c.stroke();
 }
 
-// Speed lines
-function spawnSpeedline(px, py, sc) {
-  const line = document.createElement('div');
-  line.className = 'speedline';
-  const len = 30 + Math.random()*40;
-  const off = (Math.random()-.5)*18*sc;
-  line.style.cssText = `left:${px-len}px;top:${py+off}px;width:${len}px;background:rgba(0,180,255,${.1+Math.random()*.15});`;
-  hwyEl.appendChild(line);
-  line.addEventListener('animationend',()=>line.remove(),{once:true});
+// ── Draw a single vehicle ─────────────────────────────────────────────
+function drawVehicle(id, v, d, lf) {
+  const px = laneXAt(d, lf);
+  const py = yAt(d);
+  const sc = scaleAt(d);
+  const color = TYPE_COLORS[v.vehicleType] || '#3b82f6';
+  const type = (v.vehicleType || 'SEDAN').toUpperCase();
+  const isAmbulance = type === 'AMBULANCE';
+  const isTruck = type === 'TRUCK';
+  const isBD = v.status === 'BREAKDOWN';
+  const isEmergency = v.emergency || alertIds.has(id);
+
+  c.save();
+  c.translate(px, py);
+  c.scale(sc, sc);
+
+  // ── Shadow under vehicle
+  c.fillStyle = 'rgba(0,0,0,.35)';
+  c.beginPath();
+  c.ellipse(0, 4, isTruck ? 14 : 10, isTruck ? 6 : 4, 0, 0, Math.PI * 2);
+  c.fill();
+
+  // ── Vehicle body
+  const bw = isTruck ? 13 : (type === 'SUV' ? 11 : 9.5);
+  const bh = isTruck ? 32 : (type === 'SUV' ? 24 : 22);
+  const rad = isTruck ? 3 : 5;
+
+  // Glow for special states
+  if (isAmbulance) {
+    const phase = Math.sin(frameTime * 8) > 0;
+    c.shadowColor = phase ? '#ef4444' : '#3b82f6';
+    c.shadowBlur = 16;
+  } else if (isBD) {
+    c.shadowColor = '#a78bfa';
+    c.shadowBlur = 10 + Math.sin(frameTime * 4) * 6;
+  } else if (isEmergency) {
+    c.shadowColor = '#f87171';
+    c.shadowBlur = 12 + Math.sin(frameTime * 6) * 6;
+  } else if (id === selectedId) {
+    c.shadowColor = '#38bdf8';
+    c.shadowBlur = 14;
+  }
+
+  // Main body shape
+  c.fillStyle = color;
+  c.beginPath();
+  c.roundRect(-bw, -bh / 2, bw * 2, bh, rad);
+  c.fill();
+
+  c.shadowColor = 'transparent';
+  c.shadowBlur = 0;
+
+  // Body highlight (gloss)
+  const glossGrad = c.createLinearGradient(-bw, 0, bw, 0);
+  glossGrad.addColorStop(0, 'rgba(255,255,255,.02)');
+  glossGrad.addColorStop(0.3, 'rgba(255,255,255,.12)');
+  glossGrad.addColorStop(0.7, 'rgba(255,255,255,.04)');
+  glossGrad.addColorStop(1, 'rgba(255,255,255,.01)');
+  c.fillStyle = glossGrad;
+  c.beginPath();
+  c.roundRect(-bw, -bh / 2, bw * 2, bh, rad);
+  c.fill();
+
+  // ── Windshield
+  const wsY = -bh / 2 + (isTruck ? 3 : 2);
+  const wsH = isTruck ? 10 : (type === 'SUV' ? 8 : 7);
+  c.fillStyle = 'rgba(120,200,240,.45)';
+  c.beginPath();
+  c.roundRect(-bw + 2, wsY, (bw - 2) * 2, wsH, 2);
+  c.fill();
+
+  // ── Rear window
+  const rwY = bh / 2 - (isTruck ? 5 : 7);
+  c.fillStyle = 'rgba(120,200,240,.30)';
+  c.beginPath();
+  c.roundRect(-bw + 2, rwY, (bw - 2) * 2, isTruck ? 3 : 5, 2);
+  c.fill();
+
+  // ── Headlights
+  c.fillStyle = 'rgba(255,253,210,.90)';
+  c.fillRect(-bw + 1, -bh / 2 + 1, 4, 1.5);
+  c.fillRect(bw - 5, -bh / 2 + 1, 4, 1.5);
+
+  // Headlight glow
+  const hlGlow = c.createRadialGradient(0, -bh / 2, 0, 0, -bh / 2 - 10, 20 * sc);
+  hlGlow.addColorStop(0, 'rgba(255,253,210,.08)');
+  hlGlow.addColorStop(1, 'rgba(255,253,210,0)');
+  c.fillStyle = hlGlow;
+  c.fillRect(-20, -bh / 2 - 12, 40, 14);
+
+  // ── Taillights
+  const braking = v.brakeLights === true;
+  c.fillStyle = braking ? '#ff2222' : '#991b1b';
+  c.fillRect(-bw + 1, bh / 2 - 2.5, 4, 2);
+  c.fillRect(bw - 5, bh / 2 - 2.5, 4, 2);
+
+  if (braking) {
+    c.shadowColor = '#ff2222';
+    c.shadowBlur = 12;
+    c.fillStyle = '#ff2222';
+    c.fillRect(-bw + 1, bh / 2 - 2.5, 4, 2);
+    c.fillRect(bw - 5, bh / 2 - 2.5, 4, 2);
+    c.shadowColor = 'transparent';
+    c.shadowBlur = 0;
+  }
+
+  // ── Wheels
+  c.fillStyle = '#111118';
+  // Front
+  c.fillRect(-bw - 2, -bh / 2 + 4, 3, isTruck ? 6 : 5);
+  c.fillRect(bw - 1, -bh / 2 + 4, 3, isTruck ? 6 : 5);
+  // Rear
+  c.fillRect(-bw - 2, bh / 2 - (isTruck ? 10 : 9), 3, isTruck ? 6 : 5);
+  c.fillRect(bw - 1, bh / 2 - (isTruck ? 10 : 9), 3, isTruck ? 6 : 5);
+
+  if (isTruck) {
+    // Extra axle
+    c.fillRect(-bw - 2, bh / 2 - 18, 3, 6);
+    c.fillRect(bw - 1, bh / 2 - 18, 3, 6);
+  }
+
+  // ── Ambulance markings
+  if (isAmbulance) {
+    // Light bar
+    const phase = Math.sin(frameTime * 8) > 0;
+    c.fillStyle = phase ? '#ef4444' : '#3b82f6';
+    c.fillRect(-4, -bh / 2 + 3, 3, 2);
+    c.fillStyle = phase ? '#3b82f6' : '#ef4444';
+    c.fillRect(1, -bh / 2 + 3, 3, 2);
+    // Red cross
+    c.fillStyle = '#ef4444';
+    c.fillRect(-0.75, 2, 1.5, 6);
+    c.fillRect(-3, 4, 6, 2);
+  }
+
+  // ── Turn signals
+  if (v.turnSignal === 'LEFT' || v.turnSignal === 'HAZARD') {
+    if (Math.sin(frameTime * 8) > 0) {
+      c.fillStyle = '#fbbf24';
+      c.shadowColor = '#fbbf24';
+      c.shadowBlur = 6;
+      c.beginPath(); c.arc(-bw - 1, 0, 2, 0, Math.PI * 2); c.fill();
+      c.shadowColor = 'transparent'; c.shadowBlur = 0;
+    }
+  }
+  if (v.turnSignal === 'RIGHT' || v.turnSignal === 'HAZARD') {
+    if (Math.sin(frameTime * 8) > 0) {
+      c.fillStyle = '#fbbf24';
+      c.shadowColor = '#fbbf24';
+      c.shadowBlur = 6;
+      c.beginPath(); c.arc(bw + 1, 0, 2, 0, Math.PI * 2); c.fill();
+      c.shadowColor = 'transparent'; c.shadowBlur = 0;
+    }
+  }
+
+  // ── Breakdown hazard flash
+  if (isBD && Math.sin(frameTime * 6) > 0) {
+    c.fillStyle = '#fbbf24';
+    c.shadowColor = '#fbbf24';
+    c.shadowBlur = 6;
+    c.beginPath(); c.arc(-bw - 1, 0, 2, 0, Math.PI * 2); c.fill();
+    c.beginPath(); c.arc(bw + 1, 0, 2, 0, Math.PI * 2); c.fill();
+    c.shadowColor = 'transparent'; c.shadowBlur = 0;
+  }
+
+  // ── ID tag
+  c.font = `600 ${Math.max(7, 8 * sc)}px 'JetBrains Mono', monospace`;
+  c.textAlign = 'center';
+  c.fillStyle = `rgba(56,189,248,${0.4 + sc * 0.3})`;
+  c.fillText(id.replace('SIM-', ''), 0, -bh / 2 - 5);
+
+  // ── Speed indicator (small text under vehicle when near)
+  if (d < 0.55) {
+    c.font = `700 ${Math.max(6, 7 * sc)}px 'JetBrains Mono', monospace`;
+    c.fillStyle = `rgba(226,232,240,${0.3 + (1 - d) * 0.4})`;
+    c.fillText((v.speedMps * 3.6).toFixed(0) + ' km/h', 0, bh / 2 + 10);
+  }
+
+  c.restore();
 }
 
-// V2X rings
-function spawnRing(px, py, sc) {
-  const ring = document.createElement('div');
-  ring.className = 'v2x-ring';
-  const sz = 14*sc;
-  ring.style.cssText = `left:${px}px;top:${py}px;width:${sz}px;height:${sz}px;`;
-  hwyEl.appendChild(ring);
-  ring.addEventListener('animationend',()=>ring.remove(),{once:true});
+// ── V2X communication rings ───────────────────────────────────────────
+function spawnV2XRing(px, py, scale, color) {
+  v2xRings.push({ px, py, scale, color: color || 'rgba(56,189,248,0.5)', t: 0, maxT: 1.4 });
 }
-function spawnRandomRing() {
-  if (!smoothCam) return;
-  const ids = Object.keys(vehicles); if (!ids.length) return;
-  const id  = ids[Math.floor(Math.random()*ids.length)];
-  const v   = vehicles[id]; if (!v) return;
-  const ix  = iX(id);
-  const d   = Math.min(1,Math.max(0,(ix-(smoothCam-VIEW_HALF))/(VIEW_HALF*2)));
-  spawnRing(laneXAt(d,v.lane), yAt(d), scaleAt(d));
-}
-setInterval(spawnRandomRing, 380);
 
-// TTC lines on canvas (drawn after road)
+function drawV2XRings() {
+  for (let i = v2xRings.length - 1; i >= 0; i--) {
+    const ring = v2xRings[i];
+    ring.t += 0.016;
+    if (ring.t >= ring.maxT) { v2xRings.splice(i, 1); continue; }
+    const progress = ring.t / ring.maxT;
+    const radius = 4 + progress * 50 * ring.scale;
+    const alpha = (1 - progress) * 0.5;
+    c.strokeStyle = ring.color.replace(/[\d.]+\)$/, alpha + ')');
+    c.lineWidth = 1.2 * (1 - progress * 0.5);
+    c.beginPath();
+    c.arc(ring.px, ring.py, radius, 0, Math.PI * 2);
+    c.stroke();
+  }
+}
+
+// ── TTC danger lines ──────────────────────────────────────────────────
 function drawTTCLines() {
   if (!smoothCam) return;
-  const viewMin = smoothCam-VIEW_HALF, range=VIEW_HALF*2;
-  alerts.forEach(a=>{
-    const va=vehicles[a.from], vb=vehicles[a.to]; if(!va||!vb) return;
-    const da=Math.min(1,Math.max(0,(iX(a.from)-viewMin)/range));
-    const db=Math.min(1,Math.max(0,(iX(a.to)-viewMin)/range));
-    const urg=Math.min(1,(4-a.ttc)/4);
-    ctx.strokeStyle=`rgba(255,${Math.round(60*(1-urg))},0,${.3+urg*.5})`;
-    ctx.lineWidth=1.5+urg*2;
-    ctx.setLineDash([6,4]);
-    ctx.beginPath();
-    ctx.moveTo(laneXAt(da,va.lane),yAt(da));
-    ctx.lineTo(laneXAt(db,vb.lane),yAt(db));
-    ctx.stroke();
-    ctx.setLineDash([]);
+  const viewMin = smoothCam - VIEW_HALF, range = VIEW_HALF * 2;
+
+  alerts.forEach(a => {
+    const va = vehicles[a.from], vb = vehicles[a.to];
+    if (!va || !vb) return;
+    const da = Math.min(1, Math.max(0, (iX(a.from) - viewMin) / range));
+    const db = Math.min(1, Math.max(0, (iX(a.to) - viewMin) / range));
+    const urg = Math.min(1, (4 - a.ttc) / 4);
+
+    const x1 = laneXAt(da, va.lane), y1 = yAt(da);
+    const x2 = laneXAt(db, vb.lane), y2 = yAt(db);
+
+    // Danger zone glow
+    const midX = (x1 + x2) / 2, midY = (y1 + y2) / 2;
+    const glow = c.createRadialGradient(midX, midY, 0, midX, midY, 30);
+    glow.addColorStop(0, `rgba(248,113,113,${0.06 + urg * 0.08})`);
+    glow.addColorStop(1, 'rgba(248,113,113,0)');
+    c.fillStyle = glow;
+    c.fillRect(midX - 30, midY - 30, 60, 60);
+
+    // Dashed line
+    c.strokeStyle = `rgba(248,${Math.round(60 * (1 - urg))},0,${0.25 + urg * 0.55})`;
+    c.lineWidth = 1 + urg * 2;
+    c.setLineDash([6, 4]);
+    c.beginPath();
+    c.moveTo(x1, y1);
+    c.lineTo(x2, y2);
+    c.stroke();
+    c.setLineDash([]);
+
+    // TTC label
+    if (urg > 0.3) {
+      c.font = `800 ${9 + urg * 3}px 'JetBrains Mono', monospace`;
+      c.textAlign = 'center';
+      c.fillStyle = `rgba(248,113,113,${0.5 + urg * 0.5})`;
+      c.fillText(`TTC ${a.ttc.toFixed(1)}s`, midX, midY - 8);
+    }
   });
 }
 
-// ── Tooltip ────────────────────────────────────────────────────────────
-const tipEl = document.getElementById('tooltip');
-function showTip(id,el) {
-  const v=vehicles[id]; if(!v) return;
-  tipEl.innerHTML=`<span class="tid">${TYPE_ICONS[v.vehicleType]||'🚗'} ${id}</span>
-    <div class="tr"><span>Speed</span><span>${(v.speedMps*3.6).toFixed(0)} km/h</span></div>
-    <div class="tr"><span>Lane</span><span>${LANE_NAMES[v.lane]??v.lane}</span></div>
-    <div class="tr"><span>Eng Temp</span><span>${(v.engineTemp??0).toFixed(1)}°C</span></div>
-    <div class="tr"><span>Status</span><span>${v.status}</span></div>`;
-  tipEl.style.display='block';
-  const hr=hwyEl.getBoundingClientRect(), er=el.getBoundingClientRect();
-  tipEl.style.left=Math.min(er.left-hr.left+24,hr.width-230)+'px';
-  tipEl.style.top =Math.max(4,er.top-hr.top-100)+'px';
+// ── V2X data beams between nearby vehicles ────────────────────────────
+function drawV2XBeams() {
+  if (!smoothCam) return;
+  const viewMin = smoothCam - VIEW_HALF, range = VIEW_HALF * 2;
+  const ids = Object.keys(vehicles);
+  const now = frameTime;
+
+  for (let i = 0; i < ids.length; i++) {
+    for (let j = i + 1; j < ids.length; j++) {
+      const va = vehicles[ids[i]], vb = vehicles[ids[j]];
+      if (!va || !vb) continue;
+      const gap = Math.abs(iX(ids[i]) - iX(ids[j]));
+      if (gap > 80) continue; // only show beams for nearby vehicles
+
+      const da = Math.min(1, Math.max(0, (iX(ids[i]) - viewMin) / range));
+      const db = Math.min(1, Math.max(0, (iX(ids[j]) - viewMin) / range));
+      if (da <= 0 || da >= 1 || db <= 0 || db >= 1) continue;
+
+      const x1 = laneXAt(da, laneF(ids[i], va.lane)), y1 = yAt(da);
+      const x2 = laneXAt(db, laneF(ids[j], vb.lane)), y2 = yAt(db);
+
+      // Subtle data beam
+      const beamAlpha = 0.04 + 0.04 * Math.sin(now * 3 + i * 2.1);
+      c.strokeStyle = `rgba(34,211,238,${beamAlpha})`;
+      c.lineWidth = 0.5;
+      c.setLineDash([3, 6]);
+      c.beginPath();
+      c.moveTo(x1, y1);
+      c.lineTo(x2, y2);
+      c.stroke();
+      c.setLineDash([]);
+
+      // Traveling data particle
+      const particleT = ((now * 0.8 + i * 0.7) % 1);
+      const partX = x1 + (x2 - x1) * particleT;
+      const partY = y1 + (y2 - y1) * particleT;
+      c.fillStyle = `rgba(34,211,238,${0.3 + 0.3 * Math.sin(now * 5)})`;
+      c.beginPath();
+      c.arc(partX, partY, 1.5, 0, Math.PI * 2);
+      c.fill();
+    }
+  }
 }
-function hideTip() { tipEl.style.display='none'; }
+
+// ── Tooltip on canvas ─────────────────────────────────────────────────
+let tooltipData = null;
+
+function drawTooltip() {
+  if (!tooltipData || !hoveredId) return;
+  const v = vehicles[hoveredId];
+  if (!v) { tooltipData = null; return; }
+
+  const { px, py } = tooltipData;
+  const tw = 180, th = 110;
+  const tx = Math.min(px + 20, W / devicePixelRatio - tw - 10);
+  const ty = Math.max(10, py - th / 2);
+
+  c.fillStyle = 'rgba(6,10,16,.94)';
+  c.strokeStyle = 'rgba(14,165,233,.35)';
+  c.lineWidth = 1;
+  c.beginPath();
+  c.roundRect(tx, ty, tw, th, 8);
+  c.fill();
+  c.stroke();
+
+  c.font = "700 10px 'JetBrains Mono', monospace";
+  c.textAlign = 'left';
+  c.fillStyle = '#38bdf8';
+  c.fillText(`${TYPE_ICONS[v.vehicleType] || '🚗'} ${hoveredId}`, tx + 10, ty + 18);
+
+  const rows = [
+    ['Speed', (v.speedMps * 3.6).toFixed(0) + ' km/h'],
+    ['Lane', LANE_NAMES[v.lane] ?? 'L' + v.lane],
+    ['Status', v.status],
+    ['Eng Temp', (v.engineTemp ?? 0).toFixed(1) + '°C'],
+    ['Position', v.x.toFixed(0) + ' m']
+  ];
+
+  c.font = "500 10px 'Inter', sans-serif";
+  rows.forEach(([label, val], i) => {
+    const ry = ty + 34 + i * 15;
+    c.fillStyle = '#5a7a94';
+    c.fillText(label, tx + 10, ry);
+    c.fillStyle = '#e2e8f0';
+    c.textAlign = 'right';
+    c.fillText(val, tx + tw - 10, ry);
+    c.textAlign = 'left';
+  });
+}
+
+// ── Hit testing for hover ─────────────────────────────────────────────
+cv.addEventListener('mousemove', (e) => {
+  if (!smoothCam) return;
+  const rect = hwyEl.getBoundingClientRect();
+  const mx = e.clientX - rect.left, my = e.clientY - rect.top;
+  const viewMin = smoothCam - VIEW_HALF, range = VIEW_HALF * 2;
+
+  hoveredId = null;
+  tooltipData = null;
+
+  for (const id of Object.keys(vehicles)) {
+    const v = vehicles[id];
+    const ix = iX(id);
+    const d = Math.min(1, Math.max(0, (ix - viewMin) / range));
+    const lf = laneF(id, v.lane);
+    const px = laneXAt(d, lf), py = yAt(d);
+    const sc = scaleAt(d);
+    const hitR = 15 * sc;
+
+    if (Math.abs(mx - px) < hitR && Math.abs(my - py) < hitR * 1.5) {
+      hoveredId = id;
+      tooltipData = { px, py };
+      break;
+    }
+  }
+  cv.style.cursor = hoveredId ? 'pointer' : 'default';
+});
+
+cv.addEventListener('click', (e) => {
+  if (hoveredId) {
+    selectedId = selectedId === hoveredId ? null : hoveredId;
+  }
+});
+
+cv.addEventListener('mouseleave', () => {
+  hoveredId = null;
+  tooltipData = null;
+});
 
 // ═══════════════════════════════════════════════════════════════════════
 //  MAIN RENDER LOOP
 // ═══════════════════════════════════════════════════════════════════════
-function rafLoop() {
+
+let lastFrame = performance.now();
+
+function render(now) {
+  const dt = (now - lastFrame) / 1000;
+  lastFrame = now;
+  frameTime += dt;
+
   updateCam();
+
+  const cw = W / devicePixelRatio;
+  c.clearRect(0, 0, cw, H / devicePixelRatio);
+
+  drawSky();
   drawRoad();
-  drawTTCLines();
-  renderMarkers();
-  if (smoothCam!==null)
+
+  if (smoothCam !== null) {
+    const viewMin = smoothCam - VIEW_HALF, range = VIEW_HALF * 2;
+
+    // Sort vehicles by depth (far first)
+    const sorted = Object.keys(vehicles).map(id => {
+      const v = vehicles[id];
+      const ix = iX(id);
+      const d = Math.min(1, Math.max(0, (ix - viewMin) / range));
+      return { id, v, d, lf: laneF(id, v.lane) };
+    }).filter(e => e.d > -0.1 && e.d < 1.1)
+      .sort((a, b) => b.d - a.d); // far (d=1) first
+
+    drawV2XBeams();
+    drawTTCLines();
+
+    sorted.forEach(({ id, v, d, lf }) => {
+      drawVehicle(id, v, d, lf);
+    });
+
+    drawV2XRings();
+    drawTooltip();
+
     document.getElementById('camOverlay').textContent =
-      `CAM · ${smoothCam.toFixed(0)}m · ${Object.keys(vehicles).length} VEH`;
-  requestAnimationFrame(rafLoop);
+      `CAM · ${smoothCam.toFixed(0)}m · ${Object.keys(vehicles).length} vehicles`;
+  }
+
+  // Spawn V2X rings periodically
+  if (Math.random() < 0.025 && smoothCam !== null) {
+    const ids = Object.keys(vehicles);
+    if (ids.length) {
+      const id = ids[Math.floor(Math.random() * ids.length)];
+      const v = vehicles[id];
+      const viewMin = smoothCam - VIEW_HALF, range = VIEW_HALF * 2;
+      const d = Math.min(1, Math.max(0, (iX(id) - viewMin) / range));
+      if (d > 0 && d < 1) {
+        const color = v.emergency ? 'rgba(248,113,113,0.6)' :
+                      v.status === 'BREAKDOWN' ? 'rgba(167,139,250,0.5)' :
+                      v.vehicleType === 'AMBULANCE' ? 'rgba(239,68,68,0.5)' :
+                      'rgba(56,189,248,0.5)';
+        spawnV2XRing(laneXAt(d, laneF(id, v.lane)), yAt(d), scaleAt(d), color);
+      }
+    }
+  }
+
+  requestAnimationFrame(render);
 }
 
-// ── Vehicle cards ──────────────────────────────────────────────────────
-const gridEl   = document.getElementById('vehicle-grid');
-const emptyMon = document.getElementById('em-mon');
+// ═══════════════════════════════════════════════════════════════════════
+//  SIDE PANEL
+// ═══════════════════════════════════════════════════════════════════════
 
-function wearCol(p) { return p>80?'var(--danger)':p>55?'var(--amber)':'var(--safe)'; }
-function hCls(s) { return s==='CRITICAL'?'danger':s==='SERVICE_SOON'?'amber':'safe'; }
+const gridEl = document.getElementById('vehicleGrid');
+const emptyMon = document.getElementById('emptyMon');
+
+function wearColor(p) { return p > 80 ? '#f87171' : p > 55 ? '#fbbf24' : '#34d399'; }
 
 function buildCard(id) {
-  const v=vehicles[id]||{};
-  const icon=TYPE_ICONS[v.vehicleType]||'🚗';
-  const el=document.createElement('div'); el.id='vc-'+id; el.className='vcard';
-  el.innerHTML=`
-    <div class="vcard-top">
+  const v = vehicles[id] || {};
+  const icon = TYPE_ICONS[v.vehicleType] || '🚗';
+  const el = document.createElement('div');
+  el.id = 'vc-' + id;
+  el.className = 'vcard';
+  el.innerHTML = `
+    <div class="vcard-header">
       <span class="vcard-id">${icon} ${id}</span>
-      <span class="badge bn" id="vb-${id}">NORMAL</span>
+      <span class="badge badge-normal" id="vb-${id}">NORMAL</span>
     </div>
-    <div class="readout"><span>Speed</span><b id="vs-${id}">—</b></div>
-    <div class="readout"><span>Lane</span><b id="vl-${id}">—</b></div>
-    <div class="readout"><span>Position</span><b id="vp-${id}">—</b></div>
-    <div class="readout"><span>Eng Temp</span><b id="vt-${id}">—</b></div>
-    <div class="readout" id="vhr-${id}" style="display:none"><span>Health</span><b id="vh-${id}">—</b></div>
-    <div class="wear-grid">${WEAR_KEYS.map(c=>`
+    <div class="stat-row"><span>Speed</span><b id="vs-${id}">—</b></div>
+    <div class="stat-row"><span>Lane</span><b id="vl-${id}">—</b></div>
+    <div class="stat-row"><span>Position</span><b id="vp-${id}">—</b></div>
+    <div class="stat-row"><span>Engine Temp</span><b id="vt-${id}">—</b></div>
+    <div class="wear-grid">${WEAR_KEYS.map(w => `
       <div class="wear-item">
-        <span class="wlbl">${c.label}</span>
-        <div class="wtrack"><div class="wfill" id="wf-${id}-${c.key}"></div></div>
-        <span class="wpct" id="wp-${id}-${c.key}">0%</span>
+        <span class="wear-label">${w.label}</span>
+        <div class="wear-track"><div class="wear-fill" id="wf-${id}-${w.key}"></div></div>
+        <span class="wear-pct" id="wp-${id}-${w.key}">0%</span>
       </div>`).join('')}</div>
-    <div class="ctrl-block">
+    <div class="ctrl-section">
       <div class="ctrl-row">
         <input type="number" id="cs-${id}" placeholder="Speed m/s" step="1" min="0" max="50" onclick="event.stopPropagation()">
         <button onclick="event.stopPropagation();doSpd('${id}')">SET</button>
       </div>
       <div class="ctrl-row">
-        <input type="number" id="cp-${id}" placeholder="Pos m" step="10" onclick="event.stopPropagation()">
+        <input type="number" id="cp-${id}" placeholder="Position m" step="10" onclick="event.stopPropagation()">
         <button onclick="event.stopPropagation();doPos('${id}')">SET</button>
       </div>
-      <button class="bd-btn" onclick="event.stopPropagation();doBreakdown('${id}')">⚠ SIMULATE BREAKDOWN</button>
+      <button class="breakdown-btn" onclick="event.stopPropagation();doBreakdown('${id}')">⚠ Trigger Breakdown</button>
     </div>`;
-  el.addEventListener('click',()=>{selectedId=selectedId===id?null:id;syncSel();});
+  el.addEventListener('click', () => { selectedId = selectedId === id ? null : id; });
   return el;
 }
 
-function T(eid,val){const e=document.getElementById(eid);if(e&&e.textContent!==val)e.textContent=val;}
-function CL(eid,val){const e=document.getElementById(eid);if(e&&e.className!==val)e.className=val;}
+function T(eid, val) { const e = document.getElementById(eid); if (e && e.textContent !== val) e.textContent = val; }
 
 function updateCard(id) {
-  const v=vehicles[id]; if(!v) return;
-  const card=document.getElementById('vc-'+id); if(!card) return;
-  const stale=Date.now()-v.timestampMillis>STALE_MS, hasAl=alertIds.has(id), isBD=v.status==='BREAKDOWN', isSel=id===selectedId;
-  let cc='vcard';
-  if(stale)cc+=' stale'; if(hasAl)cc+=' has-alert'; if(isBD)cc+=' breakdown-card'; if(isSel)cc+=' selected';
-  if(card.className!==cc)card.className=cc;
-  let bc,bt;
-  if(stale){bc='badge bs';bt='STALE';}
-  else if(isBD){bc='badge bb';bt='PULLED OVER';}
-  else if(v.emergency||hasAl){bc='badge bw';bt=v.emergency?'EMERGENCY':'TTC RISK';}
-  else{bc='badge bn';bt='NORMAL';}
-  CL('vb-'+id,bc); T('vb-'+id,bt);
-  T('vs-'+id,(v.speedMps*3.6).toFixed(0)+' km/h');
-  T('vl-'+id,LANE_NAMES[v.lane]??'L'+v.lane);
-  T('vp-'+id,v.x.toFixed(0)+' m');
-  const te=document.getElementById('vt-'+id);
-  if(te){const tv=(v.engineTemp??0).toFixed(1)+'°C';if(te.textContent!==tv)te.textContent=tv;te.className=(v.engineTemp??0)>100?'danger':(v.engineTemp??0)>90?'amber':'';}
-  const mnt=maintenance[id]; const hr=document.getElementById('vhr-'+id);
-  if(hr)hr.style.display=mnt?'':'none';
-  if(mnt){const he=document.getElementById('vh-'+id);if(he){const ht=mnt.healthStatus.replace('_',' ')+' · '+Math.round(mnt.predictedRul)+'h';if(he.textContent!==ht)he.textContent=ht;he.className=hCls(mnt.healthStatus);}}
-  WEAR_KEYS.forEach(c=>{const p=v[c.key]??0,w=p.toFixed(0)+'%';const fe=document.getElementById('wf-'+id+'-'+c.key);const pe=document.getElementById('wp-'+id+'-'+c.key);if(fe&&fe.style.width!==w){fe.style.width=w;fe.style.background=wearCol(p);}if(pe&&pe.textContent!==w)pe.textContent=w;});
+  const v = vehicles[id]; if (!v) return;
+  const card = document.getElementById('vc-' + id); if (!card) return;
+
+  const stale = Date.now() - v.timestampMillis > STALE_MS;
+  const hasAlert = alertIds.has(id);
+  const isBD = v.status === 'BREAKDOWN';
+  const isSel = id === selectedId;
+
+  let cc = 'vcard';
+  if (stale) cc += ' stale';
+  if (hasAlert) cc += ' alert';
+  if (isBD) cc += ' breakdown';
+  if (isSel) cc += ' selected';
+  if (card.className !== cc) card.className = cc;
+
+  // Badge
+  const badgeEl = document.getElementById('vb-' + id);
+  if (badgeEl) {
+    if (stale) { badgeEl.className = 'badge badge-stale'; badgeEl.textContent = 'STALE'; }
+    else if (isBD) { badgeEl.className = 'badge badge-breakdown'; badgeEl.textContent = 'BREAKDOWN'; }
+    else if (v.emergency || hasAlert) { badgeEl.className = 'badge badge-alert'; badgeEl.textContent = v.emergency ? 'EMERGENCY' : 'TTC RISK'; }
+    else { badgeEl.className = 'badge badge-normal'; badgeEl.textContent = 'NORMAL'; }
+  }
+
+  T('vs-' + id, (v.speedMps * 3.6).toFixed(0) + ' km/h');
+  T('vl-' + id, LANE_NAMES[v.lane] ?? 'L' + v.lane);
+  T('vp-' + id, v.x.toFixed(0) + ' m');
+
+  const te = document.getElementById('vt-' + id);
+  if (te) {
+    const tv = (v.engineTemp ?? 0).toFixed(1) + '°C';
+    if (te.textContent !== tv) te.textContent = tv;
+    te.className = (v.engineTemp ?? 0) > 100 ? 'danger' : (v.engineTemp ?? 0) > 90 ? 'amber' : '';
+  }
+
+  WEAR_KEYS.forEach(w => {
+    const p = v[w.key] ?? 0;
+    const pStr = p.toFixed(0) + '%';
+    const fe = document.getElementById('wf-' + id + '-' + w.key);
+    const pe = document.getElementById('wp-' + id + '-' + w.key);
+    if (fe) { fe.style.width = pStr; fe.style.background = wearColor(p); }
+    if (pe && pe.textContent !== pStr) pe.textContent = pStr;
+  });
 }
 
-function syncSel(){Object.keys(vehicles).forEach(id=>{const c=document.getElementById('vc-'+id);if(!c)return;const w=id===selectedId;if(w&&!c.classList.contains('selected'))c.classList.add('selected');if(!w&&c.classList.contains('selected'))c.classList.remove('selected');});}
-
-function syncCards(){
-  const ids=Object.keys(vehicles);
-  emptyMon.style.display=ids.length?'none':'flex';
-  gridEl.style.display=ids.length?'flex':'none';
-  if(!ids.length)return;
-  const sorted=[...ids].sort((a,b)=>iX(b)-iX(a));
-  sorted.forEach(id=>{if(!document.getElementById('vc-'+id))gridEl.appendChild(buildCard(id));});
-  document.querySelectorAll('[id^="vc-"]').forEach(el=>{if(!vehicles[el.id.slice(3)])el.remove();});
-  if(!gridEl.contains(document.activeElement)){
-    sorted.forEach((id,i)=>{const c=document.getElementById('vc-'+id);if(c&&gridEl.children[i]!==c)gridEl.insertBefore(c,gridEl.children[i]||null);});
+function syncCards() {
+  const ids = Object.keys(vehicles);
+  emptyMon.style.display = ids.length ? 'none' : 'flex';
+  gridEl.style.display = ids.length ? 'flex' : 'none';
+  if (!ids.length) return;
+  const sorted = [...ids].sort((a, b) => iX(b) - iX(a));
+  sorted.forEach(id => {
+    if (!document.getElementById('vc-' + id)) gridEl.appendChild(buildCard(id));
+  });
+  document.querySelectorAll('[id^="vc-"]').forEach(el => {
+    if (!vehicles[el.id.slice(3)]) el.remove();
+  });
+  if (!gridEl.contains(document.activeElement)) {
+    sorted.forEach((id, i) => {
+      const card = document.getElementById('vc-' + id);
+      if (card && gridEl.children[i] !== card) gridEl.insertBefore(card, gridEl.children[i] || null);
+    });
   }
   sorted.forEach(updateCard);
 }
-setInterval(syncCards,800);
+setInterval(syncCards, 800);
 
-// Metrics
-function updateMetrics(){
-  const vs=Object.values(vehicles); if(!vs.length)return;
-  const fleet=vs.filter(v=>v.status!=='BREAKDOWN'&&v.lane!==3).length;
-  const avgSpd=vs.reduce((s,v)=>s+v.speedMps,0)/vs.length*3.6;
-  const bds=vs.filter(v=>v.status==='BREAKDOWN').length, risks=alerts.length;
-  const safety=Math.max(0,100-risks*12-bds*8);
-  T('m-fleet',fleet+'');T('m-speed',avgSpd.toFixed(0));
-  T('m-risks',risks+'');T('m-breakdown',bds+'');
-  T('m-msgrate',msgRate.toFixed(1));T('m-safety',safety.toFixed(0));
-  const se=document.getElementById('m-safety');if(se)se.className='hm-val'+(safety>75?' safe':safety>45?' amber':' danger');
-  const re=document.getElementById('m-risks');if(re)re.className='hm-val'+(risks>3?' danger':risks>0?' amber':'');
-}
-setInterval(()=>{const now=Date.now();msgRate=msgCount*1000/Math.max(1,now-lastMsgMs);msgCount=0;lastMsgMs=now;updateMetrics();},1000);
+// ── Metrics ───────────────────────────────────────────────────────────
+function updateMetrics() {
+  const vs = Object.values(vehicles);
+  if (!vs.length) return;
+  const fleet = vs.filter(v => v.status !== 'BREAKDOWN' && v.lane !== 3).length;
+  const avgSpd = vs.reduce((s, v) => s + v.speedMps, 0) / vs.length * 3.6;
+  const bds = vs.filter(v => v.status === 'BREAKDOWN').length;
+  const risks = alerts.length;
+  const safety = Math.max(0, 100 - risks * 12 - bds * 8);
 
-// Alerts tab
-const ttcEl=document.getElementById('ttcAlerts'), notifEl=document.getElementById('notifPanel'), emptyAl=document.getElementById('em-alerts');
-function addNotif(vehicleId,message,severity){const time=new Date().toLocaleTimeString();notifications.unshift({vehicleId,message,severity,time});if(notifications.length>40)notifications.pop();}
-const warnedWear={}, warnedBD={};
-function checkWear(v){
-  WEAR_KEYS.forEach(c=>{const p=v[c.key]??0,k=v.id+'_'+c.key;if(p>80&&!warnedWear[k]){addNotif(v.id,c.label+' wear '+p.toFixed(0)+'% — service soon','high');warnedWear[k]=true;}});
-  if(v.status==='BREAKDOWN'&&!warnedBD[v.id]){addNotif(v.id,'Pulled over — '+(v.reason||'breakdown'),'critical');warnedBD[v.id]=true;}
-}
-function renderAlerts(){
-  if(ttcEl)ttcEl.innerHTML=alerts.map(a=>`<div class="acrd"><b>⚡ TTC ${a.ttc.toFixed(2)}s · ${a.from} → ${a.to}</b><span>Gap: ${a.gap.toFixed(1)}m${a.ttc<2?' · CRITICAL':''}</span></div>`).join('');
-  if(notifEl)notifEl.innerHTML=notifications.slice(0,15).map(n=>`<div class="notif n${n.severity[0]}"><span class="nt">${n.time}</span><b>${n.vehicleId}</b> — ${n.message}</div>`).join('');
-  if(emptyAl)emptyAl.style.display=(alerts.length||notifications.length)?'none':'flex';
-  const te=document.getElementById('tab-alerts');if(te)te.textContent=alerts.length?`ALERTS(${alerts.length})`:'ALERTS';
-}
-setInterval(renderAlerts,500);
+  T('m-fleet', fleet + '');
+  T('m-speed', avgSpd.toFixed(0));
+  T('m-risks', risks + '');
+  T('m-bd', bds + '');
+  T('m-msg', msgRate.toFixed(1));
+  T('m-safety', safety.toFixed(0));
 
-// ── WebSocket ──────────────────────────────────────────────────────────
-const dotEl=document.getElementById('statusDot'), txtEl=document.getElementById('statusText');
+  const se = document.getElementById('m-safety');
+  if (se) se.className = 'metric-value' + (safety > 75 ? ' safe' : safety > 45 ? ' amber' : ' danger');
+  const re = document.getElementById('m-risks');
+  if (re) re.className = 'metric-value' + (risks > 3 ? ' danger' : risks > 0 ? ' amber' : '');
+}
+setInterval(() => {
+  const now = Date.now();
+  msgRate = msgCount * 1000 / Math.max(1, now - lastMsgMs);
+  msgCount = 0;
+  lastMsgMs = now;
+  updateMetrics();
+}, 1000);
+
+// ── Events / Alerts tab ───────────────────────────────────────────────
+function addEvent(vehicleId, message, type) {
+  const time = new Date().toLocaleTimeString();
+  events.unshift({ vehicleId, message, type, time });
+  if (events.length > 50) events.pop();
+}
+
+const warnedWear = {}, warnedBD = {};
+function checkWear(v) {
+  WEAR_KEYS.forEach(w => {
+    const p = v[w.key] ?? 0;
+    const k = v.id + '_' + w.key;
+    if (p > 80 && !warnedWear[k]) {
+      addEvent(v.id, `${w.label} wear ${p.toFixed(0)}% — service needed`, 'warn');
+      warnedWear[k] = true;
+    }
+  });
+  if (v.status === 'BREAKDOWN' && !warnedBD[v.id]) {
+    addEvent(v.id, `Vehicle pulled over — ${v.reason || 'breakdown'}`, 'danger');
+    warnedBD[v.id] = true;
+  }
+}
+
+function renderEvents() {
+  const ttcEl = document.getElementById('ttcAlerts');
+  const eventEl = document.getElementById('eventLog');
+  const emptyEv = document.getElementById('emptyEvents');
+
+  if (ttcEl) ttcEl.innerHTML = alerts.map(a =>
+    `<div class="ttc-card"><b>⚡ TTC ${a.ttc.toFixed(2)}s · ${a.from} → ${a.to}</b><span>Gap: ${a.gap.toFixed(1)}m${a.ttc < 2 ? ' · CRITICAL' : ''}</span></div>`
+  ).join('');
+
+  if (eventEl) eventEl.innerHTML = events.slice(0, 20).map(e => {
+    const cls = e.type === 'danger' ? 'event-danger' : e.type === 'warn' ? 'event-warn' : e.type === 'v2x' ? 'event-v2x' : 'event-info';
+    return `<div class="event ${cls}"><span class="event-time">${e.time}</span><b>${e.vehicleId}</b> — ${e.message}</div>`;
+  }).join('');
+
+  if (emptyEv) emptyEv.style.display = (alerts.length || events.length) ? 'none' : 'flex';
+  const tab = document.getElementById('tab-events');
+  if (tab) tab.textContent = alerts.length ? `Events (${alerts.length})` : 'Events';
+}
+setInterval(renderEvents, 500);
+
+// ═══════════════════════════════════════════════════════════════════════
+//  WEBSOCKET
+// ═══════════════════════════════════════════════════════════════════════
+
 let socket;
-function connect(){
+function connect() {
   socket = new WebSocket(`ws://${location.host}/ws/vehicles`);
-  socket.onopen  = ()=>{dotEl.className='dot live';txtEl.textContent='LIVE';};
-  socket.onclose = ()=>{dotEl.className='dot down';txtEl.textContent='RECONNECTING';setTimeout(connect,2500);};
-  socket.onerror = ()=>socket.close();
-  socket.onmessage = evt=>{
-    msgCount++;const now=Date.now(),payload=JSON.parse(evt.data);
-    (payload.vehicles||[]).forEach(v=>{
-      const prev=interpPos[v.id];
-      if(prev){const pred=prev.serverX+prev.speedMps*Math.min((now-prev.updateMs)/1000,1.5);const drift=Math.abs(pred-v.x);interpPos[v.id]={serverX:drift>5?(pred+v.x)/2:v.x,speedMps:v.speedMps,updateMs:now};}
-      else{interpPos[v.id]={serverX:v.x,speedMps:v.speedMps,updateMs:now};}
-      if(!vehicles[v.id]){addNotif(v.id,(TYPE_ICONS[v.vehicleType]||'')+' '+(v.vehicleType||'Vehicle')+' joined highway','info');laneInterp[v.id]={cur:v.lane};}
-      vehicles[v.id]=v;checkWear(v);
+  socket.onopen = () => {
+    document.getElementById('wsDot').className = 'ws-dot live';
+    document.getElementById('wsText').textContent = 'LIVE';
+  };
+  socket.onclose = () => {
+    document.getElementById('wsDot').className = 'ws-dot down';
+    document.getElementById('wsText').textContent = 'RECONNECTING';
+    setTimeout(connect, 2500);
+  };
+  socket.onerror = () => socket.close();
+  socket.onmessage = evt => {
+    msgCount++;
+    const now = Date.now();
+    const payload = JSON.parse(evt.data);
+
+    (payload.vehicles || []).forEach(v => {
+      const prev = interpPos[v.id];
+      if (prev) {
+        const pred = prev.serverX + prev.speedMps * Math.min((now - prev.updateMs) / 1000, 1.5);
+        const drift = Math.abs(pred - v.x);
+        interpPos[v.id] = { serverX: drift > 5 ? (pred + v.x) / 2 : v.x, speedMps: v.speedMps, updateMs: now };
+      } else {
+        interpPos[v.id] = { serverX: v.x, speedMps: v.speedMps, updateMs: now };
+      }
+
+      if (!vehicles[v.id]) {
+        addEvent(v.id, `${TYPE_ICONS[v.vehicleType] || ''} ${v.vehicleType || 'Vehicle'} joined highway`, 'v2x');
+        laneInterp[v.id] = { cur: v.lane };
+      }
+
+      // Detect lane changes
+      const prev_v = vehicles[v.id];
+      if (prev_v && prev_v.lane !== v.lane) {
+        addEvent(v.id, `Lane change: ${LANE_NAMES[prev_v.lane]} → ${LANE_NAMES[v.lane]}`, 'v2x');
+      }
+      // Detect emergency braking start
+      if (prev_v && !prev_v.emergency && v.emergency) {
+        addEvent(v.id, 'Emergency braking activated!', 'danger');
+      }
+
+      vehicles[v.id] = v;
+      checkWear(v);
     });
-    alerts=payload.alerts||[];maintenance=payload.maintenance||{};
-    alertIds=new Set(alerts.flatMap(a=>[a.from,a.to]));
-    const active=new Set((payload.vehicles||[]).map(v=>v.id));
-    Object.keys(vehicles).forEach(id=>{if(!active.has(id)){delete vehicles[id];delete interpPos[id];delete laneInterp[id];}});
+
+    alerts = payload.alerts || [];
+    maintenance = payload.maintenance || {};
+    alertIds = new Set(alerts.flatMap(a => [a.from, a.to]));
+
+    const active = new Set((payload.vehicles || []).map(v => v.id));
+    Object.keys(vehicles).forEach(id => {
+      if (!active.has(id)) {
+        delete vehicles[id];
+        delete interpPos[id];
+        delete laneInterp[id];
+      }
+    });
   };
 }
 
-// ── Controls ───────────────────────────────────────────────────────────
-function switchTab(n){['monitor','alerts','spawn'].forEach(t=>{document.getElementById('tab-'+t).classList.toggle('active',t===n);document.getElementById('pane-'+t).classList.toggle('active',t===n);});}
-function togglePause(){fetch('/api/simulation/pause',{method:'POST'});isPaused=!isPaused;const b=document.getElementById('btn-pp');if(b)b.textContent=isPaused?'▶ RESUME':'⏸ PAUSE';}
-function resetSim(){Object.keys(vehicles).forEach(id=>{delete vehicles[id];delete interpPos[id];delete laneInterp[id];});smoothCam=null;fetch('/api/simulation/reset',{method:'POST'});}
-function setDensity(lv){fetch('/api/simulation/density/'+lv,{method:'POST'});['light','medium','rush'].forEach(l=>document.getElementById('d-'+l)?.classList.remove('active'));document.getElementById('d-'+lv.toLowerCase())?.classList.add('active');}
-function spawnVehicle(){const t=document.getElementById('sp-type')?.value||'SEDAN';const l=parseInt(document.getElementById('sp-lane')?.value||'1');const s=parseFloat(document.getElementById('sp-speed')?.value||'22');const w=parseFloat(document.getElementById('sp-wear')?.value||'10');fetch(`/api/simulation/spawn?type=${t}&lane=${l}&speed=${s}&wear=${w}`,{method:'POST'});}
-function doSpd(id){const v=parseFloat(document.getElementById('cs-'+id)?.value);if(!isNaN(v))fetch('/api/vehicles/command',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({vehicleId:id,field:'SPEED',value:v})});}
-function doPos(id){const v=parseFloat(document.getElementById('cp-'+id)?.value);if(!isNaN(v))fetch('/api/vehicles/command',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({vehicleId:id,field:'POSITION',value:v})});}
-function doBreakdown(id){fetch('/api/vehicles/command',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({vehicleId:id,field:'BREAKDOWN',value:1})});}
+// ═══════════════════════════════════════════════════════════════════════
+//  CONTROLS
+// ═══════════════════════════════════════════════════════════════════════
 
-// ── Scenarios modal ────────────────────────────────────────────────────
-function openScenarios(){document.getElementById('scenariosModal').classList.add('open');}
-function closeSc(e){if(!e||e.target===document.getElementById('scenariosModal'))document.getElementById('scenariosModal').classList.remove('open');}
-function runSc(name,cid){
-  document.querySelectorAll('.scrd.running').forEach(c=>c.classList.remove('running'));
-  fetch('/api/simulation/scenario/'+name,{method:'POST'})
-    .then(()=>{const c=document.getElementById(cid);if(c)c.classList.add('running');addNotif('SYSTEM','Scenario: '+name.replace(/_/g,' ').toUpperCase(),'info');setTimeout(()=>closeSc(),700);})
-    .catch(()=>{addNotif('SYSTEM','Scenario sent: '+name.replace(/_/g,' ').toUpperCase(),'info');setTimeout(()=>closeSc(),700);});
+function switchTab(n) {
+  ['monitor', 'events', 'spawn'].forEach(t => {
+    document.getElementById('tab-' + t).classList.toggle('active', t === n);
+    document.getElementById('pane-' + t).classList.toggle('active', t === n);
+  });
 }
 
-// ── Bootstrap ──────────────────────────────────────────────────────────
-window.addEventListener('resize',()=>{resizeCanvas();});
-resizeCanvas();
-requestAnimationFrame(rafLoop);
+function togglePause() {
+  fetch('/api/simulation/pause', { method: 'POST' });
+  isPaused = !isPaused;
+  const b = document.getElementById('btn-pause');
+  if (b) b.textContent = isPaused ? '▶ Resume' : '⏸ Pause';
+}
+
+function resetSim() {
+  Object.keys(vehicles).forEach(id => {
+    delete vehicles[id];
+    delete interpPos[id];
+    delete laneInterp[id];
+  });
+  smoothCam = null;
+  events.length = 0;
+  fetch('/api/simulation/reset', { method: 'POST' });
+}
+
+function setDensity(lv) {
+  fetch('/api/simulation/density/' + lv, { method: 'POST' });
+  ['light', 'medium', 'rush'].forEach(l => document.getElementById('d-' + l)?.classList.remove('active'));
+  document.getElementById('d-' + lv.toLowerCase())?.classList.add('active');
+}
+
+function spawnVehicle() {
+  const t = document.getElementById('sp-type')?.value || 'SEDAN';
+  const l = parseInt(document.getElementById('sp-lane')?.value || '1');
+  const s = parseFloat(document.getElementById('sp-speed')?.value || '22');
+  const w = parseFloat(document.getElementById('sp-wear')?.value || '10');
+  fetch(`/api/simulation/spawn?type=${t}&lane=${l}&speed=${s}&wear=${w}`, { method: 'POST' });
+}
+
+function doSpd(id) {
+  const v = parseFloat(document.getElementById('cs-' + id)?.value);
+  if (!isNaN(v)) fetch('/api/vehicles/command', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ vehicleId: id, field: 'SPEED', value: v })
+  });
+}
+function doPos(id) {
+  const v = parseFloat(document.getElementById('cp-' + id)?.value);
+  if (!isNaN(v)) fetch('/api/vehicles/command', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ vehicleId: id, field: 'POSITION', value: v })
+  });
+}
+function doBreakdown(id) {
+  fetch('/api/vehicles/command', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ vehicleId: id, field: 'BREAKDOWN', value: 1 })
+  });
+}
+
+// ── Scenario modal ────────────────────────────────────────────────────
+function openScenarios() { document.getElementById('scenarioModal').classList.add('open'); }
+function closeScenarios(e) {
+  if (!e || e.target === document.getElementById('scenarioModal'))
+    document.getElementById('scenarioModal').classList.remove('open');
+}
+function runScenario(name) {
+  fetch('/api/simulation/scenario/' + name, { method: 'POST' })
+    .then(() => {
+      addEvent('SYSTEM', 'Scenario: ' + name.replace(/_/g, ' ').toUpperCase(), 'info');
+      setTimeout(closeScenarios, 600);
+    })
+    .catch(() => {
+      addEvent('SYSTEM', 'Scenario sent: ' + name.replace(/_/g, ' ').toUpperCase(), 'info');
+      setTimeout(closeScenarios, 600);
+    });
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+//  BOOTSTRAP
+// ═══════════════════════════════════════════════════════════════════════
+resize();
+requestAnimationFrame(render);
 connect();
 </script>
 </body>
